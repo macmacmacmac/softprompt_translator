@@ -29,7 +29,8 @@ def run(args_list):
     parser.add_argument("--num_samples", type=int, default=3)
     parser.add_argument("--save_directory", type=str, default="./datasets/math_physics2")
     parser.add_argument("--max_new_tokens", type=int, default=50)
-    parser.add_argument("--text_or_math", type=str, default="math")
+    parser.add_argument("--show_target", type=bool, default=False)
+
     args, _ = parser.parse_known_args(args_list)
 
     MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
@@ -149,12 +150,18 @@ def run(args_list):
             labels = test_dataset[idx][1].to(model.device)
             full_ids = test_dataset[idx][0].to(model.device)
             mask = (labels==-100).to(model.device)
-            
+            antimask = (labels!=-100).to(model.device)
+
             tokenized_text = full_ids[mask].to(model.device)
             input_text = tokenizer.decode(tokenized_text, skip_special_tokens=True)
             input_embed = word_embeddings(tokenized_text).unsqueeze(0)
 
             soft_gen = softprompt.generate_from_embeds(embeds=input_embed, max_new_tokens=75, suffix_str=gen_prompt)[0]
+            
+            if args.show_target:
+                tokenized_target = full_ids[antimask].to(model.device)
+                target_text = tokenizer.decode(tokenized_target, skip_special_tokens=True)
+                print(f"Actual: {target_text}")
             print(f"<soft generation start>{input_text}{gen_prompt}{soft_gen}<soft generation end>\n")
             soft_generations += (input_text + gen_prompt + soft_gen + "\n")
 

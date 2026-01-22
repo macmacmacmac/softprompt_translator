@@ -1,3 +1,7 @@
+"""
+
+"""
+
 import torch
 import argparse
 import os
@@ -38,6 +42,8 @@ def run(args_list):
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--verbose", type=bool, default=False)
     parser.add_argument("--verbose_level", type=str, default='jonathan')
+    parser.add_argument("--entropy_reg_constant", type=float, default=0.)
+
     args, _ = parser.parse_known_args(args_list)
     
     MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
@@ -105,7 +111,8 @@ def run(args_list):
         # begin training
         train_loss, test_loss, entropy = train_softprompt_from_tokenized(
             softprompt, LR, EPOCHS, train_loader, test_loader, 
-            verbose=args.verbose, verbose_level=args.verbose_level
+            verbose=args.verbose, verbose_level=args.verbose_level,
+            entropy_reg_constant=args.entropy_reg_constant
         )
 
         hardprompt = torch.load(

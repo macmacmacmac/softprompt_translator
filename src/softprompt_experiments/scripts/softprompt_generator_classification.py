@@ -35,10 +35,12 @@ def run(args_list):
     parser.add_argument("--num_tokens", type=int, default=8)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--lambd", type=float, default=1.)
+    parser.add_argument("--auto_split", type=bool, default=True)
     parser.add_argument("--save_directory", type=str, default="./datasets/math_dataset")
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--verbose", type=bool, default=False)
     parser.add_argument("--verbose_level", type=str, default='epoch')
+    parser.add_argument("--entropy_reg_constant", type=float, default=0.)
     args, _ = parser.parse_known_args(args_list)
     
     MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
@@ -106,7 +108,8 @@ def run(args_list):
         # begin training
         train_loss, test_loss, entropy = train_softprompt_from_tokenized(
             softprompt, LR, EPOCHS, train_loader, test_loader, 
-            verbose=args.verbose, verbose_level=args.verbose_level
+            verbose=args.verbose, verbose_level=args.verbose_level,
+            entropy_reg_constant=args.entropy_reg_constant
         )
 
         hardprompt = torch.load(

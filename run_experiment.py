@@ -6,22 +6,22 @@ def main():
     print("\nReceived the following arguments:\n|---->", " ".join(sys.argv))
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--experiment",
+        "--scripts",
         nargs="+",                   # <── allow multiple
         required=True,
-        help="Experiment modules to run"
+        help="scripts to run"
     )
     args, unknown = parser.parse_known_args()
 
-    for exp in args.experiment:
-        module_name = f"softprompt_experiments.experiments.{exp}"
-        exp_module = importlib.import_module(module_name)
+    for script in args.scripts:
+        module_name = f"softprompt_experiments.scripts.{script}"
+        script_module = importlib.import_module(module_name)
 
-        if not hasattr(exp_module, "run"):
-            raise ValueError(f"Experiment '{exp}' must have a run(args) function.")
+        if not hasattr(script_module, "run"):
+            raise ValueError(f"Script '{script}' must have a run(args) function.")
 
         # Each experiment receives same unknown args (or you could customize)
-        exp_module.run(unknown)
+        script_module.run(unknown)
 
 
 if __name__ == "__main__":

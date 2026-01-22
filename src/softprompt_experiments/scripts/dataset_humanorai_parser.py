@@ -40,7 +40,7 @@ def run(args_list):
     # input_sentences = [f"\nSample text: {input_sent}\nAnswer: " for input_sent in df.text.tolist()]
     prefix = "\nSample text:\n\""
     suffix = "...\"\nAnswer:\n"
-    target_sentences = [('ai' if target==1 else 'human') for target in df.generated.tolist()]
+    target_sentences = [('AI generated' if target==1 else 'Human written') for target in df.generated.tolist()]
 
     # print(input_sentences[:3])
     # print(target_sentences[:3])
