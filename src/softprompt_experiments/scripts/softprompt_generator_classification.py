@@ -35,7 +35,7 @@ def run(args_list):
     parser.add_argument("--num_tokens", type=int, default=8)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--lambd", type=float, default=1.)
-    parser.add_argument("--no-auto_split",dest="auto_split",action="store_false")
+    parser.add_argument("--no_auto_split",dest="auto_split",action="store_false")
     parser.set_defaults(auto_split=True)
     parser.add_argument("--save_directory", type=str, default="./datasets/math_dataset")
     parser.add_argument("--seed", type=int, default=None)
@@ -121,10 +121,16 @@ def run(args_list):
             entropy_reg_constant=ENTROPY_REG_CONSTANT
         )
 
-        hardprompt = torch.load(
-            os.path.join(dataset_dir,'dataset.pt'),
-            weights_only=False
-        )['hardprompt']
+        if AUTO_SPLIT:
+            hardprompt = torch.load(
+                os.path.join(dataset_dir,'dataset.pt'),
+                weights_only=False
+            )['hardprompt']
+        else:
+            hardprompt = torch.load(
+                os.path.join(dataset_dir,'train_dataset.pt'),
+                weights_only=False
+            )['hardprompt']
 
         # if verbose: generate sample output predictions using eval_softprompt
         if VERBOSE:

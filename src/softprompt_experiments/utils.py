@@ -113,7 +113,8 @@ def get_train_test_from_tokenized(tokenized_dataset_dir: str, batchsize: int, au
         if not os.path.exists(test_path):
             raise FileNotFoundError(f"{test_path} not found.")
 
-        train_dataset, test_dataset = load_dataset_from_path(train_path, test_path)
+        train_dataset = load_dataset_from_path(train_path)
+        test_dataset = load_dataset_from_path(test_path)
 
     # Create DataLoaders
     train_loader = DataLoader(train_dataset, batch_size=batchsize, shuffle=True)
@@ -632,8 +633,9 @@ def train_softprompt_from_tokenized(
             optimizer.zero_grad()
 
             train_loss += loss.item()
-            if i%36 == 0:
-                print(f"Batch:{i}, train_loss: {loss}, entropy: {batch_entropy}")
+            if verbose and verbose_level == 'batch':
+                if i%36 == 0:
+                    print(f"Batch:{i}, train_loss: {loss}, entropy: {batch_entropy}")
             
         # ---- evaluation ----
         softprompt.eval()

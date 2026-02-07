@@ -12,6 +12,8 @@ from tqdm.auto import tqdm
 from softprompt_experiments.utils import tokenize_and_save, batched_tokenize_and_save
 import pandas as pd
 
+import pickle
+
 def run(args_list):
     exp_name = os.path.basename(__file__)
     print(
@@ -21,7 +23,7 @@ def run(args_list):
     )
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--save_directory", type=str, default="./datasets/human_or_ai_dataset")
+    parser.add_argument("--save_directory", type=str, default="./datasets/CLASS_dataset")
     args, _ = parser.parse_known_args(args_list)
     
     MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
@@ -81,50 +83,48 @@ def run(args_list):
     testdf = dataset.get_dataset_by_keys(test_keys)
     print("Dataset splitted"+ "="*16+"\n\n")
 
-    # if normalize:
-    #     mu, std = np.mean(traindf['targets']), np.std(traindf['targets'])
-    #     traindf['targets'] = (np.array(traindf['targets'])-mu)/std
-    #     normalize = (mu, std)
+    # mu, std = np.mean(traindf['targets']), np.std(traindf['targets'])
+    # traindf['targets'] = (np.array(traindf['targets'])-mu)/std
+    # testdf['targets'] = (np.array(testdf['targets'])-mu)/std
 
+    prefix = "\nTranscribed classroom audio:\n\""
+    suffix = "...\"\nCLASS Protocol Rating (summed):\n"
 
-    df = pd.read_csv("./datasets/human_or_ai_dataset/human_or_ai_dataset.csv")
+    def get_input_target_sents(df):
+        target_sentences = [f"{target:.2f}" for target in df.targets.tolist()]
+        return df.transcripts.tolist(), target_sentences
     
-    # input_sentences = [f"\nSample text: {input_sent}\nAnswer: " for input_sent in df.text.tolist()]
-    prefix = "\nClass recording transcript:\n\""
-    suffix = "...\"\nAnswer:\n"
-    target_sentences = [('AI generated' if target==1 else 'Human written') for target in df.generated.tolist()]
-
-    # print(input_sentences[:3])
-    # print(target_sentences[:3])
+    train_input_sents, train_target_sents = get_input_target_sents(traindf)
+    test_input_sents, test_target_sents = get_input_target_sents(testdf)
 
     train_tokenized = batched_tokenize_and_save(
-        df.text.tolist(),
+        train_input_sents,
         prefix,
         suffix, 
-        target_sentences, 
+        train_target_sents, 
         save_dir, 
-        "human or ai", 
+        "class dataset", 
         tokenizer, 
-        input_max_length=128, 
+        input_max_length=32, 
         target_max_length=4,
-        file_name='train_dataset.pt'
+        filename='train_dataset.pt'
     )
 
     test_tokenized = batched_tokenize_and_save(
-        df.text.tolist(),
+        test_input_sents,
         prefix,
         suffix, 
-        target_sentences, 
+        test_target_sents, 
         save_dir, 
-        "human or ai", 
+        "class dataset", 
         tokenizer, 
-        input_max_length=128, 
+        input_max_length=32, 
         target_max_length=4,
-        file_name='test_dataset.pt'
+        filename='test_dataset.pt'
     )
 
 
-    print(tokenizer.decode(tokenized['tokenized_samples']['input_ids'][0]))
+    print(tokenizer.decode(train_tokenized['tokenized_samples']['input_ids'][0]))
 
     print(
         "\n","="*100, "\n", 
