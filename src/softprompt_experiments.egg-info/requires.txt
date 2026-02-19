@@ -16,3 +16,4 @@ openai
 tiktoken
 sentencepiece
 nltk
+statsmodels

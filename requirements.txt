@@ -76,7 +76,7 @@ sentencepiece==0.2.1
 setuptools==80.9.0
 six==1.17.0
 sniffio==1.3.1
--e git+https://github.com/macmacmacmac/softprompt_experiments.git@79921e95d41ccd2c2145ac479011443be18afee3#egg=softprompt_experiments
+-e git+https://github.com/macmacmacmac/softprompt_experiments.git@e8026ed1337cafe9e7e8227b13a9539f9e310ab4#egg=softprompt_experiments
 statsmodels==0.14.6
 sympy==1.14.0
 threadpoolctl==3.6.0
