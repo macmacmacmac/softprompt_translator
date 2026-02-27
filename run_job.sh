@@ -2,7 +2,7 @@
 #SBATCH -N 1
 #SBATCH -n 8
 #SBATCH --mem=32g
-#SBATCH -J "Gen DoD"
+#SBATCH -J "DoD"
 #SBATCH -p short
 #SBATCH -t 24:00:00
 #SBATCH --gres=gpu:1
@@ -32,6 +32,6 @@ else
 fi
 
 # -----------------------------
-# Generate Classification Datasets
+# Run the Job (Example: Python Script / Module)
 # -----------------------------
 python -m run_experiment --scripts classification_dataset_generator

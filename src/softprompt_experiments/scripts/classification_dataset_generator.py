@@ -17,7 +17,10 @@ Generate diverse, natural-sounding sentences that describe or imply the Target K
 
 CRITICAL CONSTRAINTS: 
 1. You MUST NOT use the target keyword, its root, or any direct derivations anywhere in the text.
-2. Ensure the sentences cover different contexts (e.g., everyday life, technical, emotional, professional).
+2. KEEP SENTENCES SHORT AND CONCISE (maximum 15 to 20 words per sentence).
+3. Ensure the sentences cover different contexts (e.g., everyday life, technical, emotional, professional).
+4. STRICTLY ENGLISH ONLY. Do not output Chinese or any other language.
+5. NO conversational filler, NO self-correction, and NO tool calls. Generate ONLY the JSON.
 """
 
 # Define the exact JSON schema we want vLLM to force the model to follow
@@ -110,7 +113,7 @@ def setup_database(db_path):
 def run(args_list):
     exp_name = os.path.basename(__file__)
     print(
-        "="*100, "\n", 
+        "="*100, "\n",
         f"\t\t\tRunning script: {exp_name}", "\n",
         "="*100,"\n"
     )
@@ -118,9 +121,9 @@ def run(args_list):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--mini_dataset_size", type=int, default=500)
-    parser.add_argument("--num_of_datasets", type=int, default=5)   # TODO: Change this value, once testing of this script is done
+    parser.add_argument("--num_of_datasets", type=int, default=5500)
     parser.add_argument("--save_directory", type=str, default="./datasets/mapper_classification_datasets")
-    parser.add_argument("--db_name", type=str, default="synthetic_datasets.sqlite")
+    parser.add_argument("--db_name", type=str, default="classification_5k.sqlite")
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables
@@ -186,8 +189,9 @@ def run(args_list):
 
     # Setup SamplingParams for the vLLM along with a guided json schema for guided decoding
     sampling_params = SamplingParams(
-        temperature = 1.0, 
-        max_tokens = 2000,
+        temperature = 0.4, 
+        presence_penalty = 0.5,
+        max_tokens = 1000,
         structured_outputs = StructuredOutputsParams(json = JSON_SCHEMA)
     ) # TODO: check this
 
@@ -216,64 +220,57 @@ def run(args_list):
                     "messages": messages
                 })
 
-    # Load all messages to be sent to the vLLM
-    conversations = [task["messages"] for task in generation_tasks]
-
-    # Execute the Batch Generation request
-    print(f"Submitting {len(conversations)} generation tasks to vLLM...")
-    outputs = llm.chat(messages = conversations, sampling_params = sampling_params)
-
-    # Parse and Insert Results into the DB
-    print("Parsing vLLM outputs and inserting into SQLite...")
+    # Process and save 10,000 prompts at a time
+    VLLM_BATCH_SIZE = 10000
+    total_chunks = (len(generation_tasks) + VLLM_BATCH_SIZE - 1) // VLLM_BATCH_SIZE
     success_count = 0
-    for task, output in tqdm(zip(generation_tasks, outputs), total=len(generation_tasks), desc = "Parsing LLM Responses and Inserting into DB"):
-        generated_text = output.outputs[0].text
+    
+    print(f"Submitting {len(generation_tasks)} tasks to vLLM in chunks of {VLLM_BATCH_SIZE}...")
+    
+    # Iterate through the tasks in chunks
+    for i in tqdm(range(0, len(generation_tasks), VLLM_BATCH_SIZE), desc = "Processing vLLM requests"):
+        batch_tasks = generation_tasks[i : i + VLLM_BATCH_SIZE]
+        batch_conversations = [task["messages"] for task in batch_tasks]
+        
+        current_chunk = (i // VLLM_BATCH_SIZE) + 1
+        
+        print(f"\n" + "="*50)
+        print(f"Processing Chunk {current_chunk} of {total_chunks}...")
+        print(f"="*50)
 
-        try:
+        # Generate the JSONs for this specific chunk
+        outputs = llm.chat(messages = batch_conversations, sampling_params = sampling_params)
 
-            # Clean the raw text of markdown ticks BEFORE regex parsing
-            # cleaned_raw_text = generated_text.replace("```json", "").replace("```", "").strip()
+        # Parse and Insert the outputs for this chunk
+        for task, output in zip(batch_tasks, outputs):
+            generated_text = output.outputs[0].text
 
-            # # Find ALL blocks that look like JSON (matching everything between { and })
-            # matches = re.findall(r'\{.*?\}', cleaned_raw_text, re.DOTALL)
-            
-            # if not matches:
-            #     raise ValueError("No JSON object found in the model's output.")
+            try:
+                # Try to parse the generated text as JSON
+                data = json.loads(generated_text)
                 
-            # clean_text = matches[-1]
+                # Simple 80/20 Train/Test split assignment
+                for idx, sentence in enumerate(data.get("sentences", [])):
+                    split = "test" if idx % 10 >= 8 else "train"
+                        
+                    cursor.execute(
+                        "INSERT INTO sentences (dataset_id, keyword_id, sentence, split) VALUES (?, ?, ?, ?)",
+                        (task["dataset_id"], task["keyword_id"], sentence, split)
+                    )
 
-            # The model might output markdown ticks (```json ... ```)
-            # So we need to clean it, incase it exists
-            # clean_text = generated_text.replace("```json", "").replace("```", "").strip()
+                success_count += 1
 
-            # Try to load the clean text as JSON
-            # data = json.loads(clean_text)
+            # Catch any JSON decoding errors 
+            except json.JSONDecodeError as e: 
+                print(f"CRITICAL: Guided decoding failed for dataset {task['dataset_id']}, keyword '{task['keyword']}'. Error: {e}")
+                print(f"generated_text: {generated_text}")
+                continue
 
+        # Commit the data to the DB immediately (once this batch is processed)
+        conn.commit()
+        print(f"Chunk {current_chunk} securely committed to SQLite disk. Total valid sentences so far: {success_count * CHUNK_SIZE}")
 
-            data = json.loads(generated_text)
+    print(f"\nDone! Successfully generated data for {success_count * CHUNK_SIZE} sentences across {NUM_OF_DATASETS} datasets.")
 
-            # Validate the 'sentences' key exists to prevent silent KeyErrors
-            # if "sentences" not in data or not isinstance(data["sentences"], list):
-            #     raise ValueError("JSON parsed successfully, but missing the 'sentences' array.")
-            
-            # Simple 80/20 Train/Test split assignment
-            for idx, sentence in enumerate(data.get("sentences", [])):
-                split = "test" if idx % 10 >= 8 else "train"
-                    
-                cursor.execute(
-                    "INSERT INTO sentences (dataset_id, keyword_id, sentence, split) VALUES (?, ?, ?, ?)",
-                    (task["dataset_id"], task["keyword_id"], sentence, split)
-                )
-
-            success_count += 1
-            
-        # Catch any JSON decoding errors
-        except (json.JSONDecodeError) as e: 
-            print(f"CRITICAL: Guided decoding failed for dataset {task['dataset_id']}, keyword '{task['keyword']}'. Error: {e}")
-            continue
-
-    print(f"Done! Successfully generated data for {success_count * CHUNK_SIZE} sentences across {NUM_OF_DATASETS} datasets.")
-
-    # Commit all inserts and close the connection
-    conn.commit()
+    # Close the connection when completely finished
     conn.close()

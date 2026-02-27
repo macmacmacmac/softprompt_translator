@@ -14,7 +14,7 @@
 !pyproject.toml
 !requirements.txt
 !.gitignore
-!generate_classification_dataset.sh
+!run_job.sh
 
 # Ignore all Python cache files everywhere
 __pycache__/
