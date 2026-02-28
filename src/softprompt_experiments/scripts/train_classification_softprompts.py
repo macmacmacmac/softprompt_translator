@@ -178,13 +178,6 @@ def run(args_list):
 
     # Get the Llama Model's Word Embedding Mappings
     llama_word_embeddings = llama_model.get_input_embeddings()
-    
-    # TODO: Do this in a Loop Later for all Mini Datasets
-    
-    # ┌───────────────────────────────────────────────┐
-    # │                  DATASET PREP                 │
-    # └───────────────────────────────────────────────┘
-    dataset_id = 0
 
     # Init Collator
     collator = CausalLMBatchCollator(
@@ -192,157 +185,106 @@ def run(args_list):
         soft_prompt_length = NUM_TOKENS
     )
 
-    # Init Training Dataset
-    train_dataset = SQLiteClassificationDataset(
-        db_path = DB_PATH,
-        dataset_id = dataset_id,
-        split = "train"
-    )
-    # Init Training DataLoader 
-    train_dataloader = DataLoader(
-        train_dataset,
-        batch_size = BATCH_SIZE,
-        shuffle = True,
-        collate_fn = collator
-    )
+    # Get all Dataset ids
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT dataset_id FROM datasets")
+    dataset_ids = [row[0] for row in cursor.fetchall()]
+    conn.close()
 
-    # Init Validation Dataset
-    val_dataset = SQLiteClassificationDataset(
-        db_path = DB_PATH,
-        dataset_id = dataset_id,
-        split = "test"
-    )
+    # Dataset Progress Bar
+    dataset_pbar = tqdm(dataset_ids, desc = "Master Dataset Progress")
 
-    # Init Validation DataLoader 
-    val_dataloader = DataLoader(
-        val_dataset,
-        batch_size = BATCH_SIZE,
-        shuffle = False,
-        collate_fn = collator
-    )
+    # Loop over all dataset ids
+    for dataset_id in dataset_pbar:
+        save_dir = f"./trained_soft_prompts/dataset_{dataset_id}"
 
-
-    # ┌───────────────────────────────────────────────┐
-    # │               SOFT PROMPT INIT                │
-    # └───────────────────────────────────────────────┘
-    # Query the DB to get the 5 keywords for this dataset so we can initialize 
-    # the soft prompt with the "Classify the following sentence as: A, B, C..." text.
-    # conn = sqlite3.connect(DB_PATH)
-    # cursor = conn.cursor()
-    # cursor.execute("SELECT keyword FROM keywords WHERE dataset_id = ?", (dataset_id,))
-    # keywords = [row[0] for row in cursor.fetchall()]
-    # conn.close()
-
-    soft_prompt = SoftPrompt(
-        model = llama_model,
-        tokenizer = llama_tokenizer,
-        word_embeddings = llama_word_embeddings,
-        num_tokens = NUM_TOKENS
-    ).to(DEVICE)
-
-    optimizer = torch.optim.AdamW(soft_prompt.parameters(), lr = LR)
-
-    # ┌───────────────────────────────────────────────┐
-    # │                 TRAINING LOOP                 │
-    # └───────────────────────────────────────────────┘
-    print(f"\nStarting training for Dataset {dataset_id}...")
-
-    # Loop EPOCH times
-    for epoch in range(EPOCHS):
-        total_train_loss = 0
-        train_correct_tokens = 0
-        train_total_tokens = 0
-
-        # Set the soft prompt in training mode
-        soft_prompt.train()
-        
-        progress_bar = tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{EPOCHS}")
-        for batch in progress_bar:
-
-            # Reset gradients
-            optimizer.zero_grad()
+        # If there exists an already trained soft prompt for this dataset id, then skip this
+        if os.path.exists(save_dir):
+            continue
             
-            # Move inputs to DEVICE
-            input_ids = batch["input_ids"].to(DEVICE)                                       # (batch_size, seq_len)
-            attention_mask = batch["attention_mask"].to(DEVICE)                             # (batch_size, seq_len)
-            labels = batch["labels"].to(DEVICE)                                             # (batch_size, soft_prompt_len + seq_len)
+        # Update the outer progress bar so you know exactly which dataset is training
+        dataset_pbar.set_postfix({"Current Dataset id": dataset_id})
+
+        # ┌───────────────────────────────────────────────┐
+        # │                  DATASET PREP                 │
+        # └───────────────────────────────────────────────┘
+
+        # Init Training Dataset
+        train_dataset = SQLiteClassificationDataset(
+            db_path = DB_PATH,
+            dataset_id = dataset_id,
+            split = "train"
+        )
+        # Init Training DataLoader 
+        train_dataloader = DataLoader(
+            train_dataset,
+            batch_size = BATCH_SIZE,
+            shuffle = True,
+            collate_fn = collator
+        )
+
+        # Init Validation Dataset
+        val_dataset = SQLiteClassificationDataset(
+            db_path = DB_PATH,
+            dataset_id = dataset_id,
+            split = "test"
+        )
+
+        # Init Validation DataLoader 
+        val_dataloader = DataLoader(
+            val_dataset,
+            batch_size = BATCH_SIZE,
+            shuffle = False,
+            collate_fn = collator
+        )
+
+
+        # ┌───────────────────────────────────────────────┐
+        # │               SOFT PROMPT INIT                │
+        # └───────────────────────────────────────────────┘
+
+        soft_prompt = SoftPrompt(
+            model = llama_model,
+            tokenizer = llama_tokenizer,
+            word_embeddings = llama_word_embeddings,
+            num_tokens = NUM_TOKENS
+        ).to(DEVICE)
+
+        # Init Optimizer with only params from Soft Prompt
+        optimizer = torch.optim.AdamW(soft_prompt.parameters(), lr = LR)
+
+        # ┌───────────────────────────────────────────────┐
+        # │                 TRAINING LOOP                 │
+        # └───────────────────────────────────────────────┘
+        print(f"\n--- Starting training for Dataset {dataset_id} ---")
+
+        # Loop EPOCH times
+        for epoch in range(EPOCHS):
+            total_train_loss = 0
+            train_correct_tokens = 0
+            train_total_tokens = 0
+
+            # Set the soft prompt in training mode
+            soft_prompt.train()
             
-            # Get the text embeddings from Llama
-            with torch.no_grad():
-                text_embeds = llama_word_embeddings(input_ids).detach()
+            for batch in train_dataloader:
+
+                # Reset gradients
+                optimizer.zero_grad()
                 
-            # Get the continuous Soft Prompt embeddings and duplicate for the batch
-            soft_prompt_embeds = soft_prompt()                                              # (1, soft_prompt_len, embed_dim)
-            soft_prompt_embeds = soft_prompt_embeds.expand(text_embeds.shape[0], -1, -1)    # (batch_size, soft_prompt_len, embed_dim)
-            
-            # Concatenate Embeddings: [Soft Prompt + Input Text]
-            inputs_embeds = torch.cat([soft_prompt_embeds, text_embeds], dim=1)             # (batch_size, soft_prompt_len + seq_len, embed_dim)
-            
-            # Concatenate Attention Masks: Add `1`s so Llama pays attention to the soft prompt
-            soft_prompt_mask = torch.ones((attention_mask.shape[0], NUM_TOKENS), dtype=attention_mask.dtype, device=DEVICE)     # (batch_size, soft_prompt_len)
-            full_attention_mask = torch.cat([soft_prompt_mask, attention_mask], dim=1)      # (batch_size, soft_prompt_len + seq_len)
-
-            # Forward Pass
-            outputs = llama_model(
-                inputs_embeds=inputs_embeds,
-                attention_mask=full_attention_mask,
-                labels=labels
-            )
-            
-            # Extract the loss
-            loss = outputs.loss
-            
-            # Backpropagate loss and update the parameters
-            loss.backward()
-            optimizer.step()
-
-            logits = outputs.logits
-
-            # Shift logits and labels so token i predicts i + 1
-            shifted_logits = logits[..., :-1, :].contiguous()
-            shifted_labels = labels[..., 1:].contiguous()
-
-            # Get the predicted token ids
-            preds = torch.argmax(shifted_logits, dim = -1)
-
-            # Create a mask to ignore the -100 padding tokens
-            valid_mask = (shifted_labels != -100)
-
-            # Count correct predictions
-            correct = (preds == shifted_labels) & valid_mask
-
-            # Accumulate numbers for Accuracy and Avg Loss calculation per Epoch
-            train_correct_tokens += correct.sum().item()
-            train_total_tokens += valid_mask.sum().item()        
-            total_train_loss += loss.item()
-
-            progress_bar.set_postfix({'loss': f"{loss.item():.4f}"})
-            
-        avg_train_loss = total_train_loss / len(train_dataloader)
-        train_accuracy = (train_correct_tokens / train_total_tokens) * 100 if train_total_tokens > 0 else 0
-
-        print(f"Performing Validation for Epoch {epoch + 1}")
-
-        # Set soft_prompt in eval mode
-        soft_prompt.eval()
-        total_val_loss = 0
-        val_correct_tokens = 0
-        val_total_tokens = 0
-
-        # Freeze all weights
-        with torch.no_grad():
-            for batch in val_dataloader:
-
                 # Move inputs to DEVICE
                 input_ids = batch["input_ids"].to(DEVICE)                                       # (batch_size, seq_len)
                 attention_mask = batch["attention_mask"].to(DEVICE)                             # (batch_size, seq_len)
                 labels = batch["labels"].to(DEVICE)                                             # (batch_size, soft_prompt_len + seq_len)
-
-                # Get the text embeddings from Llama
-                text_embeds = llama_word_embeddings(input_ids).detach()
                 
+                # Get the text embeddings from Llama
+                with torch.no_grad():
+                    text_embeds = llama_word_embeddings(input_ids).detach()
+                    
                 # Get the continuous Soft Prompt embeddings and duplicate for the batch
-                soft_prompt_embeds = soft_prompt().expand(text_embeds.shape[0], -1, -1)         # (batch_size, soft_prompt_len, embed_dim)
+                soft_prompt_embeds = soft_prompt()                                              # (1, soft_prompt_len, embed_dim)
+                soft_prompt_embeds = soft_prompt_embeds.expand(text_embeds.shape[0], -1, -1)    # (batch_size, soft_prompt_len, embed_dim)
                 
                 # Concatenate Embeddings: [Soft Prompt + Input Text]
                 inputs_embeds = torch.cat([soft_prompt_embeds, text_embeds], dim=1)             # (batch_size, soft_prompt_len + seq_len, embed_dim)
@@ -357,12 +299,17 @@ def run(args_list):
                     attention_mask=full_attention_mask,
                     labels=labels
                 )
+                
+                # Extract the loss
+                loss = outputs.loss
+                
+                # Backpropagate loss and update the parameters
+                loss.backward()
+                optimizer.step()
 
-                # Accumulate validation loss
-                total_val_loss += outputs.loss.item()
-
-                # Calculate Validation Accuracy
                 logits = outputs.logits
+
+                # Shift logits and labels so token i predicts i + 1
                 shifted_logits = logits[..., :-1, :].contiguous()
                 shifted_labels = labels[..., 1:].contiguous()
 
@@ -375,21 +322,83 @@ def run(args_list):
                 # Count correct predictions
                 correct = (preds == shifted_labels) & valid_mask
 
-                # Accumulate numbers for Accuracy and Avg Loss calculation
-                val_correct_tokens += correct.sum().item()
-                val_total_tokens += valid_mask.sum().item()
-        
-        avg_val_loss = total_val_loss / len(val_dataloader)
-        val_accuracy = (val_correct_tokens / val_total_tokens) * 100 if val_total_tokens > 0 else 0
+                # Accumulate numbers for Accuracy and Avg Loss calculation per Epoch
+                train_correct_tokens += correct.sum().item()
+                train_total_tokens += valid_mask.sum().item()        
+                total_train_loss += loss.item()
+                
+            avg_train_loss = total_train_loss / len(train_dataloader)
+            train_accuracy = (train_correct_tokens / train_total_tokens) * 100 if train_total_tokens > 0 else 0
 
-        print(f"Epoch {epoch + 1} Summary:")
-        print(f"Train -> Loss: {avg_train_loss: .4f} | Accuracy: {train_accuracy: .2f}%")
-        print(f"Val   -> Loss: {avg_val_loss: .4f} | Accuracy: {val_accuracy: .2f}%")
-        
-    # ---------------------------------------------------------
-    # SAVE THE PROMPT
-    # ---------------------------------------------------------
-    save_dir = f"./trained_soft_prompts/dataset_{dataset_id}"
-    os.makedirs(save_dir, exist_ok=True)
-    soft_prompt.save_softprompt(save_dir)
-    print(f"\nTraining complete! Soft prompt saved to {save_dir}/softprompt.pt")
+            print(f"Performing Validation for Epoch {epoch + 1}")
+
+            # Set soft_prompt in eval mode
+            soft_prompt.eval()
+            total_val_loss = 0
+            val_correct_tokens = 0
+            val_total_tokens = 0
+
+            # Freeze all weights
+            with torch.no_grad():
+                for batch in val_dataloader:
+
+                    # Move inputs to DEVICE
+                    input_ids = batch["input_ids"].to(DEVICE)                                       # (batch_size, seq_len)
+                    attention_mask = batch["attention_mask"].to(DEVICE)                             # (batch_size, seq_len)
+                    labels = batch["labels"].to(DEVICE)                                             # (batch_size, soft_prompt_len + seq_len)
+
+                    # Get the text embeddings from Llama
+                    text_embeds = llama_word_embeddings(input_ids).detach()
+                    
+                    # Get the continuous Soft Prompt embeddings and duplicate for the batch
+                    soft_prompt_embeds = soft_prompt().expand(text_embeds.shape[0], -1, -1)         # (batch_size, soft_prompt_len, embed_dim)
+                    
+                    # Concatenate Embeddings: [Soft Prompt + Input Text]
+                    inputs_embeds = torch.cat([soft_prompt_embeds, text_embeds], dim=1)             # (batch_size, soft_prompt_len + seq_len, embed_dim)
+                    
+                    # Concatenate Attention Masks: Add `1`s so Llama pays attention to the soft prompt
+                    soft_prompt_mask = torch.ones((attention_mask.shape[0], NUM_TOKENS), dtype=attention_mask.dtype, device=DEVICE)     # (batch_size, soft_prompt_len)
+                    full_attention_mask = torch.cat([soft_prompt_mask, attention_mask], dim=1)      # (batch_size, soft_prompt_len + seq_len)
+
+                    # Forward Pass
+                    outputs = llama_model(
+                        inputs_embeds=inputs_embeds,
+                        attention_mask=full_attention_mask,
+                        labels=labels
+                    )
+
+                    # Accumulate validation loss
+                    total_val_loss += outputs.loss.item()
+
+                    # Calculate Validation Accuracy
+                    logits = outputs.logits
+                    shifted_logits = logits[..., :-1, :].contiguous()
+                    shifted_labels = labels[..., 1:].contiguous()
+
+                    # Get the predicted token ids
+                    preds = torch.argmax(shifted_logits, dim = -1)
+
+                    # Create a mask to ignore the -100 padding tokens
+                    valid_mask = (shifted_labels != -100)
+
+                    # Count correct predictions
+                    correct = (preds == shifted_labels) & valid_mask
+
+                    # Accumulate numbers for Accuracy and Avg Loss calculation
+                    val_correct_tokens += correct.sum().item()
+                    val_total_tokens += valid_mask.sum().item()
+            
+            avg_val_loss = total_val_loss / len(val_dataloader)
+            val_accuracy = (val_correct_tokens / val_total_tokens) * 100 if val_total_tokens > 0 else 0
+
+            print(f"Epoch {epoch + 1} Summary:")
+            print(f"Train -> Loss: {avg_train_loss: .4f} | Accuracy: {train_accuracy: .2f}%")
+            print(f"Val   -> Loss: {avg_val_loss: .4f} | Accuracy: {val_accuracy: .2f}%")
+            
+        # ┌───────────────────────────────────────────────┐
+        # │              SAVE SOFT PROMPTS                │
+        # └───────────────────────────────────────────────┘
+        save_dir = f"./trained_soft_prompts/dataset_{dataset_id}"
+        os.makedirs(save_dir, exist_ok=True)
+        soft_prompt.save_softprompt(save_dir)
+        print(f"\nTraining complete! Soft prompt saved to {save_dir}/softprompt.pt")
