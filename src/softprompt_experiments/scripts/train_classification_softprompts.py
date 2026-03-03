@@ -84,7 +84,8 @@ class CausalLMBatchCollator:
         tokenized = self.tokenizer(
             full_texts, 
             padding=True, 
-            truncation=True, 
+            truncation=True,
+            max_length=64, 
             return_tensors="pt",
             add_special_tokens=True
         )
@@ -201,6 +202,7 @@ def run(args_list):
 
         # If there exists an already trained soft prompt for this dataset id, then skip this
         if os.path.exists(save_dir):
+            tqdm.write(f"Skipping training for dataset id: {dataset_id}")
             continue
             
         # Update the outer progress bar so you know exactly which dataset is training
@@ -257,7 +259,7 @@ def run(args_list):
         # ┌───────────────────────────────────────────────┐
         # │                 TRAINING LOOP                 │
         # └───────────────────────────────────────────────┘
-        print(f"\n--- Starting training for Dataset {dataset_id} ---")
+        tqdm.write(f"\n--- Starting training for Dataset {dataset_id} ---")
 
         # Loop EPOCH times
         for epoch in range(EPOCHS):
@@ -330,8 +332,6 @@ def run(args_list):
             avg_train_loss = total_train_loss / len(train_dataloader)
             train_accuracy = (train_correct_tokens / train_total_tokens) * 100 if train_total_tokens > 0 else 0
 
-            print(f"Performing Validation for Epoch {epoch + 1}")
-
             # Set soft_prompt in eval mode
             soft_prompt.eval()
             total_val_loss = 0
@@ -391,9 +391,9 @@ def run(args_list):
             avg_val_loss = total_val_loss / len(val_dataloader)
             val_accuracy = (val_correct_tokens / val_total_tokens) * 100 if val_total_tokens > 0 else 0
 
-            print(f"Epoch {epoch + 1} Summary:")
-            print(f"Train -> Loss: {avg_train_loss: .4f} | Accuracy: {train_accuracy: .2f}%")
-            print(f"Val   -> Loss: {avg_val_loss: .4f} | Accuracy: {val_accuracy: .2f}%")
+            tqdm.write(f"\nEpoch {epoch + 1} Summary:")
+            tqdm.write(f"Train -> Loss: {avg_train_loss: .4f} | Accuracy: {train_accuracy: .2f}%")
+            tqdm.write(f"Val   -> Loss: {avg_val_loss: .4f} | Accuracy: {val_accuracy: .2f}%")
             
         # ┌───────────────────────────────────────────────┐
         # │              SAVE SOFT PROMPTS                │
@@ -401,4 +401,9 @@ def run(args_list):
         save_dir = f"./trained_soft_prompts/dataset_{dataset_id}"
         os.makedirs(save_dir, exist_ok=True)
         soft_prompt.save_softprompt(save_dir)
-        print(f"\nTraining complete! Soft prompt saved to {save_dir}/softprompt.pt")
+        tqdm.write(f"\nTraining complete! Soft prompt saved to {save_dir}/softprompt.pt")
+
+        # Free up some allocations
+        del soft_prompt
+        del optimizer
+        torch.cuda.empty_cache()

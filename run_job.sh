@@ -3,8 +3,8 @@
 #SBATCH -n 8
 #SBATCH --mem=32g
 #SBATCH -J "DoD"
-#SBATCH -p short
-#SBATCH -t 24:00:00
+#SBATCH -p long
+#SBATCH -t 48:00:00
 #SBATCH --gres=gpu:1
 #SBATCH -C A100
 #SBATCH -o logs.out
@@ -31,7 +31,10 @@ else
     source "$VENV_DIR/bin/activate"
 fi
 
+# Avoid GPU memory fragmentation
+export PYTORCH_ALLOC_CONF=expandable_segments:True
+
 # -----------------------------
 # Run the Job (Example: Python Script / Module)
 # -----------------------------
-python -m run_experiment --scripts classification_dataset_generator
+python -u -m run_experiment --scripts train_classification_softprompts
