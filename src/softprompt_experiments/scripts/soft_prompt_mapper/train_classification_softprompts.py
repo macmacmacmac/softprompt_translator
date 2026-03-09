@@ -90,7 +90,7 @@ class CausalLMBatchCollator:
             add_special_tokens=True
         )
         
-        input_ids = tokenized["input_ids"]
+        input_ids = tokenized["input_ids"]                                                                  # (batch_size, seq_len)
         attention_mask = tokenized["attention_mask"]
         
         # Create the labels tensor (start by copying input_ids)
@@ -162,7 +162,7 @@ def run(args_list):
     # Load Tokenizer
     llama_tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 
-    # # Llama doesn't have a default pad token, so we map it to EOS
+    # Llama doesn't have a default pad token, so we map it to EOS
     llama_tokenizer.pad_token = llama_tokenizer.eos_token
 
     # Load Llama Model and set it in eval mode
@@ -193,7 +193,7 @@ def run(args_list):
     dataset_ids = [row[0] for row in cursor.fetchall()]
     conn.close()
 
-    # Dataset Progress Bar
+    # Init Dataset Progress Bar
     dataset_pbar = tqdm(dataset_ids, desc = "Master Dataset Progress")
 
     # Loop over all dataset ids
@@ -261,7 +261,7 @@ def run(args_list):
         # └───────────────────────────────────────────────┘
         tqdm.write(f"\n--- Starting training for Dataset {dataset_id} ---")
 
-        # Loop EPOCH times
+        # Loop EPOCHS times
         for epoch in range(EPOCHS):
             total_train_loss = 0
             train_correct_tokens = 0

@@ -5,6 +5,7 @@ from tqdm import tqdm
 import torch
 import re
 
+
 def extract_just_keywords_from_hard_prompt(hard_prompt: str) -> str:
     return hard_prompt.split("Classify the following sentence as:")[-1].strip()
 
