@@ -5,6 +5,7 @@ from torch.utils.data import Dataset, DataLoader
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import LoraConfig, get_peft_model, TaskType
 from tqdm import tqdm
+import random
 
 # PyTorch Dataset wrapper on the Mapper Dataset from Soft Prompts to Hard Prompts
 class MapperDataset(Dataset):
@@ -68,12 +69,13 @@ def run(args_list=None):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", type=float, default=2e-4)
+    parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_tokens", type=int, default=20)
-    parser.add_argument("--dataset_path", type=str, default="./datasets/mapper_training_data/compiled_mapper_dataset.pt")
+    parser.add_argument("--dataset_path", type=str, default="./datasets/mapper_training_dataset/compiled_mapper_dataset.pt")
     parser.add_argument("--save_dir", type=str, default="./mapper_lora_weights")
+    parser.add_argument("--seed", type=int, default=47)
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables
@@ -84,6 +86,7 @@ def run(args_list=None):
     EPOCHS = args.epochs
     BATCH_SIZE = args.batch_size
     NUM_TOKENS = args.num_tokens
+    SEED = args.seed
 
     # Determine DEVICE and DTYPE
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -98,7 +101,7 @@ def run(args_list=None):
     # │                 LORA MODEL PREP               │
     # └───────────────────────────────────────────────┘
     print(f"Loading base model {MODEL_NAME}...")
-    base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, torch_dtype=DTYPE, device_map=DEVICE)
+    base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
     
     # Configure LoRA Config to target the key linear layers of attention and feed-forward networks
     lora_config = LoraConfig(
@@ -128,8 +131,15 @@ def run(args_list=None):
     # └───────────────────────────────────────────────┘
     print(f"Loading compiled Mapper dataset from {DATASET_PATH}...")
     compiled_dataset = torch.load(DATASET_PATH, map_location="cpu", weights_only=True)
+
+    # Shuffle the data to ensure an even distribution
+    random.seed(SEED)
+    random.shuffle(compiled_dataset)
     
     # Perform 90/10 Train/Val Split
+    # TODO: Check if this way of splitting is good or not
+    # TODO: Validation accuracy is not improving, is 5 epochs very low?
+    # TODO: Training Accuracy increases normally, across each epoch (from 74% to 96%)
     split_idx = int(len(compiled_dataset) * 0.9)
     train_dataset = compiled_dataset[:split_idx]
     val_dataset = compiled_dataset[split_idx:]
