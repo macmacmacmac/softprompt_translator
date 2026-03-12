@@ -96,13 +96,40 @@ def run(args_list=None):
             # Decode the generated token IDs back into an English string
             pred_text = tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
 
+            # ┌───────────────────────────────────────────────┐
+            # │                   EVALUATION                  │
+            # └───────────────────────────────────────────────┘
+            # TODO: Look into calculating ROUGE1 and Class Rate, which are the metrics used by InSPEcT paper, Later
+            # Clean and split target keywords and predicted text into keyword based sets
+            target_set = set([w.strip().lower() for w in true_keywords.split(",") if w.strip()])
+            clean_pred = pred_text.replace("\n", ",")
+            pred_set = set([w.strip().lower() for w in clean_pred.split(",") if w.strip()])
+            
+            # Calculate Overlap
+            overlap = target_set.intersection(pred_set)
+            
+            # Calculate Recall, Precision, and F1
+            recall = len(overlap) / len(target_set) if len(target_set) > 0 else 0
+            precision = len(overlap) / len(pred_set) if len(pred_set) > 0 else 0
+            
+            # Calculate F1 score (if applicable)
+            if precision + recall > 0:
+                f1_score = 2 * (precision * recall) / (precision + recall)
+            else:
+                f1_score = 0.0
+            
+            # Print out the stats
             print(f"Dataset ID: {dataset_id}")
             print(f"Target Keywords : {true_keywords}")
             print(f"Model Predicted : {pred_text}")
+            print(f"Metrics         : Recall: {recall:.2f} | Precision: {precision:.2f} | F1: {f1_score:.2f}")
             
-            # Quick visual check if it was an exact match
-            if pred_text.lower() == true_keywords.lower():
-                print("Result: EXACT MATCH")
+            if f1_score == 1.0:
+                print(f"Result: Perfect Match")
+            elif recall == 1.0 and precision < 1.0:
+                print(f"Result: Runaway Generation (Got all targets, but babbled)")
+            elif recall > 0:
+                print(f"Result: Partial Match")
             else:
-                print("Result: MISMATCH")
+                print(f"Result: Failed")
             print("-" * 80)
