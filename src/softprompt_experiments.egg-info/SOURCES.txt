@@ -13,6 +13,7 @@ src/softprompt_experiments/models/openai_model.py
 src/softprompt_experiments/models/softprompt.py
 src/softprompt_experiments/models/squishyprompt.py
 src/softprompt_experiments/scripts/__init__.py
+src/softprompt_experiments/scripts/classification_dataset_generator.py
 src/softprompt_experiments/scripts/dataset_CLASS_parser.py
 src/softprompt_experiments/scripts/dataset_humanorai_parser.py
 src/softprompt_experiments/scripts/dataset_math_custom.py

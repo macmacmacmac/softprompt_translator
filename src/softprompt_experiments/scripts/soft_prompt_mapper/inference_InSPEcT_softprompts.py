@@ -83,7 +83,7 @@ def run(args_list=None):
                 # TODO: Add Evaluation over here in terms of ROUGE1, Class Rate etc.
 
                 # Print out the Stats
-                print(f"Model Predictions: {pred_text}")
+                print(f"Model Predictions: {pred_text}\n\n")
 
         else: 
             break
