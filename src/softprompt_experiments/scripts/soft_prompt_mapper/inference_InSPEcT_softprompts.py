@@ -92,8 +92,11 @@ def run(args_list=None):
                     target_prompt_type='few_shot'
                 )
 
+                elicitation_save_dir = f"./inspect_results/{dataset_name}"
+                os.makedirs(elicitation_save_dir, exist_ok=True)
+
                 df = pd.DataFrame(inspect_elicited_results)
-                df.to_csv(f'inspect_results/{dataset_name}/elicitations.csv', index=False)
+                df.to_csv(f'{elicitation_save_dir}/elicitations.csv', index=False)
 
                 # TODO: Add Evaluation over here in terms of ROUGE1, Class Rate etc.
 
