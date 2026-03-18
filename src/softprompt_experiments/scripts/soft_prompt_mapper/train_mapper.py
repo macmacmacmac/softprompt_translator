@@ -89,7 +89,6 @@ def run(args_list=None):
     EPOCHS = args.epochs
     BATCH_SIZE = args.batch_size
     NUM_TOKENS = args.num_tokens
-    SEED = args.seed
     LORA_RANK = args.lora_rank
     LORA_DROPOUT = args.lora_dropout
     OPTIM_WEIGHT_DECAY = args.optim_weight_decay

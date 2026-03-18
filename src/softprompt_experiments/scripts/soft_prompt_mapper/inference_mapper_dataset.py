@@ -30,6 +30,9 @@ def run(args_list=None):
     LORA_DIR = args.lora_dir
     NUM_SAMPLES = args.num_samples
     NUM_TOKENS = args.num_tokens
+    SEED = args.seed
+
+    random.seed(SEED)
 
     # Determine DEVICE and DTYPE
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
