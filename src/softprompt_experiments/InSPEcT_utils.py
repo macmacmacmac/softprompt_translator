@@ -22,6 +22,17 @@ FEW_SHOT_EXAMPLES = [
     "Identify the political leaning of a text or author: left or right"
 ]
 
+FEW_SHOT_EXAMPLES_DOD = [
+    "joy, sadness, anger, fear",
+    "True, False",
+    "science fiction, romance, thriller",
+    "Shakespeare or Marlowe",
+    "summer, winter, autumn or spring",
+    "bug report, feature request, compliment",
+    "spam or not spam",
+    "left or right"   
+]
+
 
 # Combination of All Layers for Patchscopes Experiment
 ALL_LAYER_COMBINATIONS = [
@@ -32,6 +43,10 @@ ALL_LAYER_COMBINATIONS = [
 # Best Patches of Layer Combinations for Patchscopes Experiment
 BEST_PATCHES = [
     {"min_source": -1, "max_source": -1, "min_target": -1, "max_target": -1},
+    # {"min_source": 10, "max_source": 10, "min_target": 0, "max_target": 0},
+    # {"min_source": 5, "max_source": 5, "min_target": 24, "max_target": 24},
+    # {"min_source": 6, "max_source": 6, "min_target": 26, "max_target": 26},
+    # {"min_source": 22, "max_source": 22, "min_target": 28, "max_target": 28},
     {"min_source": 13, "max_source": 15, "min_target": 24, "max_target": 26}
 ]
 
@@ -59,8 +74,6 @@ def elicit_description_using_inspect_technique(
 
     # Determine Layer Cominations
     combinations = layer_combinations or ALL_LAYER_COMBINATIONS
-
-    print(f"Using Following Layer Combinations: {combinations}")
     
     # Calculate total iterations for progress bar
     total_iterations = sum(

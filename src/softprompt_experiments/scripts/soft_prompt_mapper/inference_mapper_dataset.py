@@ -4,7 +4,8 @@ import random
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
-from src.softprompt_experiments.InSPEcT_utils import elicit_description_using_inspect_technique
+from src.softprompt_experiments.InSPEcT_utils import elicit_description_using_inspect_technique, BEST_PATCHES
+import pandas as pd
 
 # Driver Code
 def run(args_list=None):
@@ -57,10 +58,12 @@ def run(args_list=None):
 
     print(f"Loading base model {MODEL_NAME}...")
     base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
+    inspect_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
     
     print(f"Loading LoRA adapters from {LORA_DIR}...")
     model = PeftModel.from_pretrained(base_model, LORA_DIR)
     model.eval()
+    inspect_model.eval()
 
     # ┌───────────────────────────────────────────────┐
     # │                 INFERENCE LOOP                │
@@ -94,15 +97,6 @@ def run(args_list=None):
             
             # Decode the generated token IDs back into an English string
             pred_text = tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
-
-            # TODO: Get Elicited Text using InSPEcT Technique
-            # inspect_elicited_texts = elicit_description_using_inspect_technique(
-            #     model_name=MODEL_NAME,
-            #     num_tokens=NUM_TOKENS,
-            #     soft_prompt=soft_prompt,
-            #     dataset_name="REPLACE_ME",
-            #     target_prompt_type='few_shot'
-            # )
 
             # ┌───────────────────────────────────────────────┐
             # │                   EVALUATION                  │
@@ -140,4 +134,57 @@ def run(args_list=None):
                 print(f"Result: Partial Match")
             else:
                 print(f"Result: Failed")
+
+
+            print("-" * 100)
+            print(f"Performing InSPEcT using soft prompts trained on Dataset ID: {dataset_id}")
+            print("-" * 100 + '\n')
+
+            # Get Elicited Text using InSPEcT Technique
+            inspect_elicited_results = elicit_description_using_inspect_technique(
+                model=inspect_model,
+                tokenizer=tokenizer,
+                num_tokens=NUM_TOKENS,
+                soft_prompt=soft_prompt,
+                dataset_name="REPLACE_ME",
+                layer_combinations=BEST_PATCHES,
+                target_prompt_type='few_shot'
+            )
+
+
+            # TODO: Calculate Recall, Precision, and F1 Score
+            for i in range(len(inspect_elicited_results)):
+                output = inspect_elicited_results[i]['output']
+                elicited_set = set([w.strip().lower() for w in output.split(" ") if w.strip()])
+
+                # Calculate Overlap
+                overlap = target_set.intersection(elicited_set)
+                
+                # Calculate Recall, Precision, and F1
+                recall = len(overlap) / len(target_set) if len(target_set) > 0 else 0
+                precision = len(overlap) / len(elicited_set) if len(elicited_set) > 0 else 0
+                
+                # Calculate F1 score (if applicable)
+                if precision + recall > 0:
+                    f1_score = 2 * (precision * recall) / (precision + recall)
+                else:
+                    f1_score = 0.0
+
+                # TODO: Caluculate Class Rate
+                # TODO: Calculate ROUGE1
+
+                # Add the scores to the row
+                inspect_elicited_results[i]['recall'] = recall
+                inspect_elicited_results[i]['precision'] = precision
+                inspect_elicited_results[i]['f1_score'] = f1_score
+
+
+            # Save Elicitations using InSPEcT for this dataset
+            elicitation_save_dir = f"./inspect_results"
+            os.makedirs(elicitation_save_dir, exist_ok=True)
+
+            df = pd.DataFrame(inspect_elicited_results)
+            df.to_csv(f'{elicitation_save_dir}/dataset_{dataset_id}_elicitations.csv', index=False)
+
+            
             print("-" * 80)

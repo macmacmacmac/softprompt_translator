@@ -39,12 +39,14 @@ def run(args_list=None):
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     tokenizer.pad_token = tokenizer.eos_token
 
-    print(f"Loading base model {MODEL_NAME}...")
+    print(f"Loading base model and inspect model {MODEL_NAME}...")
     base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
+    inspect_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
     
     print(f"Loading LoRA adapters from {LORA_DIR}...")
     model = PeftModel.from_pretrained(base_model, LORA_DIR)
     model.eval()
+    inspect_model.eval()
 
 
     # ┌───────────────────────────────────────────────┐
@@ -82,9 +84,18 @@ def run(args_list=None):
                 # Decode the generated token IDs back into an English string
                 pred_text = tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
 
-                # TODO: Get Elicited Text using InSPEcT Technique
+                # TODO: Add Evaluation over here in terms of ROUGE1, Class Rate etc.
+
+                # Print out the Stats
+                print(f"Model Predictions: {pred_text}\n\n")
+
+                print("-" * 100)
+                print(f"Performing InSPEcT using soft prompts trained on {dataset_name}")
+                print("-" * 100 + "\n")
+
+                # Get Elicited Text using InSPEcT Technique
                 inspect_elicited_results = elicit_description_using_inspect_technique(
-                    model=base_model,
+                    model=inspect_model,
                     tokenizer=tokenizer,
                     num_tokens=NUM_TOKENS,
                     soft_prompt=soft_prompt,
@@ -93,16 +104,12 @@ def run(args_list=None):
                     target_prompt_type='few_shot'
                 )
 
+                # Save Elicitations using InSPEcT for this dataset
                 elicitation_save_dir = f"./inspect_results"
                 os.makedirs(elicitation_save_dir, exist_ok=True)
 
                 df = pd.DataFrame(inspect_elicited_results)
                 df.to_csv(f'{elicitation_save_dir}/{dataset_name}_elicitations.csv', index=False)
-
-                # TODO: Add Evaluation over here in terms of ROUGE1, Class Rate etc.
-
-                # Print out the Stats
-                print(f"Model Predictions: {pred_text}\n\n")
 
         else: 
             break
