@@ -38,7 +38,8 @@ BEST_PATCHES = [
 
 
 def elicit_description_using_inspect_technique(
-        model_name,
+        model,
+        tokenizer,
         num_tokens,
         soft_prompt,
         dataset_name,
@@ -48,12 +49,6 @@ def elicit_description_using_inspect_technique(
 
     # Create a Target Prompt for the experiments
     target_prompt = create_target_prompt(num_tokens, target_prompt_type, dataset_name)
-
-    # Load Model and Tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    tokenizer.pad_token = tokenizer.eos_token
-
-    model = AutoModelForCausalLM.from_pretrained(model_name, dtype=DTYPE, device_map=DEVICE)
 
     # Determine End Token
     # TODO: Can remove this if this will never be actually used by the autoregressive decoding code

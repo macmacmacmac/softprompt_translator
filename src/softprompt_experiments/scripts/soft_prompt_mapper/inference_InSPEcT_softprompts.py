@@ -84,7 +84,8 @@ def run(args_list=None):
 
                 # TODO: Get Elicited Text using InSPEcT Technique
                 inspect_elicited_results = elicit_description_using_inspect_technique(
-                    model_name=MODEL_NAME,
+                    model=base_model,
+                    tokenizer=tokenizer,
                     num_tokens=NUM_TOKENS,
                     soft_prompt=soft_prompt,
                     dataset_name="REPLACE_ME",
