@@ -4,7 +4,7 @@ import random
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
-from src.softprompt_experiments.InSPEcT_utils import elicit_description_using_inspect_technique, BEST_PATCHES
+from src.softprompt_experiments.InSPEcT_utils import elicit_description_using_inspect_technique, ALL_LAYER_COMBINATIONS
 import pandas as pd
 import string
 
@@ -21,7 +21,7 @@ def run(args_list=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--val_dataset_path", type=str, default="./datasets/mapper_training_dataset/val_mapper_dataset.pt")
     parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights")
-    parser.add_argument("--num_samples", type=int, default=10)
+    parser.add_argument("--num_samples", type=int, default=5)
     parser.add_argument("--num_tokens", type=int, default=20)
     parser.add_argument("--seed", type=int, default=47)
     args, _ = parser.parse_known_args(args_list)
@@ -73,6 +73,9 @@ def run(args_list=None):
     print("\t\t\tGENERATION RESULTS")
     print("="*80 + "\n")
 
+    # List to hold the summary of best metrics across all inspect datasets
+    summary_results = []
+
     with torch.no_grad():
         for i, sample in enumerate(test_samples):
             # Extract the data
@@ -102,12 +105,16 @@ def run(args_list=None):
             # ┌───────────────────────────────────────────────┐
             # │                   EVALUATION                  │
             # └───────────────────────────────────────────────┘
-            # TODO: Look into calculating ROUGE1 and Class Rate, which are the metrics used by InSPEcT paper, Later
-            # Clean and split target keywords and predicted text into keyword based sets
-            target_set = set([w.strip().lower() for w in true_keywords.split(",") if w.strip()])
-            clean_pred = pred_text.replace("\n", ",")
-            pred_set = set([w.strip().lower() for w in clean_pred.split(",") if w.strip()])
+            # Clean and split target keywords, stripping punctuation from the ground truth
+            raw_target_words = [w.strip().lower() for w in true_keywords.split(",") if w.strip()]
+            target_set = set([w.translate(str.maketrans('', '', string.punctuation)) for w in raw_target_words])
+            clean_pred = pred_text.translate(str.maketrans('', '', string.punctuation)).lower()
+            pred_set = set(clean_pred.split())
             
+            # Calculate Class Rate (Mapper)
+            classes_count = sum(1 for c in target_set if c in pred_set)
+            mapper_class_rate = classes_count / len(target_set) if len(target_set) > 0 else 0.0
+
             # Calculate Overlap
             overlap = target_set.intersection(pred_set)
             
@@ -125,7 +132,7 @@ def run(args_list=None):
             print(f"Dataset ID: {dataset_id}")
             print(f"Target Keywords : {true_keywords}")
             print(f"Model Predicted : {pred_text}")
-            print(f"Metrics         : Recall: {recall:.2f} | Precision: {precision:.2f} | F1: {f1_score:.2f}")
+            print(f"Metrics         : Class Rate: {mapper_class_rate:.2f} | Recall: {recall:.2f} | Precision: {precision:.2f} | F1: {f1_score:.2f}")
             
             if f1_score == 1.0:
                 print(f"Result: Perfect Match")
@@ -148,40 +155,13 @@ def run(args_list=None):
                 num_tokens=NUM_TOKENS,
                 soft_prompt=soft_prompt,
                 dataset_name="REPLACE_ME",
-                layer_combinations=BEST_PATCHES,
+                layer_combinations=ALL_LAYER_COMBINATIONS,
                 target_prompt_type='few_shot'
             )
 
-
-            # TODO: Calculate Recall, Precision, and F1 Score
-            # for i in range(len(inspect_elicited_results)):
-            #     output = inspect_elicited_results[i]['output']
-            #     elicited_set = set([w.strip().lower() for w in output.split(" ") if w.strip()])
-
-            #     # Calculate Overlap
-            #     overlap = target_set.intersection(elicited_set)
-                
-            #     # Calculate Recall, Precision, and F1
-            #     recall = len(overlap) / len(target_set) if len(target_set) > 0 else 0
-            #     precision = len(overlap) / len(elicited_set) if len(elicited_set) > 0 else 0
-                
-            #     # Calculate F1 score (if applicable)
-            #     if precision + recall > 0:
-            #         f1_score = 2 * (precision * recall) / (precision + recall)
-            #     else:
-            #         f1_score = 0.0
-
-            #     # TODO: Caluculate Class Rate
-            #     # TODO: Calculate ROUGE1
-
-            #     # Add the scores to the row
-            #     inspect_elicited_results[i]['recall'] = recall
-            #     inspect_elicited_results[i]['precision'] = precision
-            #     inspect_elicited_results[i]['f1_score'] = f1_score
-
-            # TODO: Calculate Recall, Precision, F1 Score, and Class Rate
-            for i in range(len(inspect_elicited_results)):
-                output = str(inspect_elicited_results[i]['output'])
+            # Calculate Recall, Precision, F1 Score, and Class Rate
+            for j in range(len(inspect_elicited_results)):
+                output = str(inspect_elicited_results[j]['output'])
                 
                 # INSPECT'S EXACT PRE-PROCESSING
                 # Remove punctuation and lowercase the text
@@ -204,22 +184,37 @@ def run(args_list=None):
                     f1_score = 0.0
 
                 # Add the scores to the row
-                inspect_elicited_results[i]['class_rate'] = class_rate
-                inspect_elicited_results[i]['recall'] = recall
-                inspect_elicited_results[i]['precision'] = precision
-                inspect_elicited_results[i]['f1_score'] = f1_score
+                inspect_elicited_results[j]['class_rate'] = class_rate
+                inspect_elicited_results[j]['recall'] = recall
+                inspect_elicited_results[j]['precision'] = precision
+                inspect_elicited_results[j]['f1_score'] = f1_score
 
-                if class_rate > 0:
-                    print(f"Inspect Elicitation achieved class rate: {class_rate} for layer pair: {inspect_elicited_results[i]['source_layer']},{inspect_elicited_results[i]['target_layer']}")
-                    print(f"Elicitation: {output}")
+            # Find the row with the highest class rate
+            best_classrate_row = max(inspect_elicited_results, key = lambda x: x['class_rate'])
+
+            # Save the summary comparing Mapper vs InSPEcT Best
+            summary_results.append({
+                "dataset": dataset_id,
+                "mapper_class_rate": round(mapper_class_rate, 4),
+                "mapper_elicitation": pred_text,
+                "inspect_best_class_rate": round(best_classrate_row['class_rate'], 4),
+                "inspect_best_class_rate_src_layer": best_classrate_row['source_layer'],
+                "inspect_best_class_rate_tgt_layer": best_classrate_row['target_layer'],
+                "inspect_best_class_rate_elicitation": best_classrate_row['output']
+            })
 
 
             # Save Elicitations using InSPEcT for this dataset
-            elicitation_save_dir = f"./inspect_results"
+            elicitation_save_dir = f"./inspect_results/DoD_soft_prompts"
             os.makedirs(elicitation_save_dir, exist_ok=True)
 
             df = pd.DataFrame(inspect_elicited_results)
             df.to_csv(f'{elicitation_save_dir}/dataset_{dataset_id}_elicitations.csv', index=False)
 
-            
             print("-" * 80)
+
+    if summary_results:
+        summary_df = pd.DataFrame(summary_results)
+        summary_csv_path = f"{elicitation_save_dir}/mapper_vs_inspect.csv"
+        summary_df.to_csv(summary_csv_path, index=False)
+        print(f"\nSaved master summary with best metrics to: {summary_csv_path}")
