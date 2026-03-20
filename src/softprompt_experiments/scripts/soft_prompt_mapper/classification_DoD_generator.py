@@ -12,16 +12,28 @@ from tqdm import tqdm
 
 
 SENTENCE_GENERATION_SYSTEM_PROMPT = """
-You are an expert linguistic data generator. 
-Generate diverse, natural-sounding sentences that describe or imply the Target Keyword.
-Your sentences can be full sentences or just phrases that describe the Target Keyword.
+You are an expert linguistic data generator creating training data for a classifier.
 
-CRITICAL CONSTRAINTS: 
-1. You MUST NOT use the target keyword, its root, or any direct derivations anywhere in the text.
-2. KEEP SENTENCES SHORT AND CONCISE (maximum 20 to 30 words per sentence).
-3. Ensure the sentences cover different contexts (e.g., everyday life, technical, emotional, professional).
-4. OUTPUT STRICTLY ENGLISH CHARACTERS ONLY. Do not output Chinese or any other language characters.
-5. NO conversational filler, NO self-correction, and NO tool calls. Generate ONLY the JSON.
+CRITICAL - ENGLISH ONLY:
+You are a multilingual model, but this task requires ONLY English ASCII characters (a-z, A-Z, 0-9, basic punctuation).
+DO NOT output Chinese, Japanese, Korean, Arabic, Cyrillic, or ANY non-ASCII characters.
+If you include non-English characters, your entire response will be discarded.
+
+TASK:
+Generate diverse text samples that describe, imply, or relate to the Target Keyword WITHOUT using that keyword.
+
+VARIETY REQUIREMENTS - Mix these styles:
+- Short phrases (2-5 words): "a warm embrace", "pretty cool stuff"
+- Incomplete thoughts: "when times get tough...", "almost like..."
+- Descriptive fragments: "like a ray of sunshine", "the kind that stays with you"
+- Questions: "isn't that wonderful?", "ever felt that way?"
+- Full sentences: Keep under 25 words
+
+CONSTRAINTS:
+1. NEVER use the target keyword, its root, or direct derivations
+2. Mix short (3-8 words) and medium (10-20 words) lengths
+3. Cover different contexts: everyday life, technical, emotional, professional
+4. Output ONLY the JSON - no explanations, no filler
 """
 
 # Define the exact JSON schema we want vLLM to force the model to follow
@@ -54,6 +66,12 @@ FORBIDDEN_VOCAB_SET = {
     # TREC Classes
     "abbreviation", "entity", "description", "human", "location", "number"
 }
+
+
+def contains_chinese(text: str) -> bool:
+    """Check if text contains Chinese characters."""
+    # CJK Unified Ideographs + Extension A + Symbols/Punctuation
+    return bool(re.search(r'[\u4E00-\u9FFF\u3400-\u4DBF\u3000-\u303F]', text))
 
 
 def get_safe_keywords(target_pool_size = 15000, restrict_by_forbidden_vocab = True):
@@ -127,9 +145,9 @@ def run(args_list):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--mini_dataset_size", type=int, default=500)
-    parser.add_argument("--num_of_datasets", type=int, default=5500)
+    parser.add_argument("--num_of_datasets", type=int, default=100)
     parser.add_argument("--save_directory", type=str, default="./datasets/mapper_classification_datasets")
-    parser.add_argument("--db_name", type=str, default="classification_5k.sqlite")
+    parser.add_argument("--db_name", type=str, default="DoD_2_5k.sqlite")
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables
@@ -232,6 +250,11 @@ def run(args_list):
     VLLM_BATCH_SIZE = 10_000
     total_chunks = (len(generation_tasks) + VLLM_BATCH_SIZE - 1) // VLLM_BATCH_SIZE
     success_count = 0
+
+    # Tracking counters for validation issues
+    json_failure_count = 0
+    non_english_sentence_count = 0
+    non_english_dataset_ids = set()
     
     print(f"Submitting {len(generation_tasks)} tasks to vLLM in chunks of {VLLM_BATCH_SIZE}...")
     
@@ -256,11 +279,16 @@ def run(args_list):
             try:
                 # Try to parse the generated text as JSON
                 data = json.loads(generated_text)
-                
+
                 # Simple 80/20 Train/Test split assignment
                 for idx, sentence in enumerate(data.get("sentences", [])):
                     split = "test" if idx % 10 >= 8 else "train"
-                        
+
+                    # Track Chinese characters (still insert for analysis)
+                    if contains_chinese(sentence):
+                        non_english_sentence_count += 1
+                        non_english_dataset_ids.add(task["dataset_id"])
+
                     cursor.execute(
                         "INSERT INTO sentences (dataset_id, keyword_id, sentence, split) VALUES (?, ?, ?, ?)",
                         (task["dataset_id"], task["keyword_id"], sentence, split)
@@ -268,10 +296,12 @@ def run(args_list):
 
                 success_count += 1
 
-            # Catch any JSON decoding errors 
-            except json.JSONDecodeError as e: 
-                print(f"CRITICAL: Guided decoding failed for dataset {task['dataset_id']}, keyword '{task['keyword']}'. Error: {e}")
-                print(f"generated_text: {generated_text}")
+            # Catch any JSON decoding errors
+            except json.JSONDecodeError as e:
+                json_failure_count += 1
+                truncated_output = generated_text[:200] + "..." if len(generated_text) > 200 else generated_text
+                print(f"JSON FAILURE [{json_failure_count}]: dataset={task['dataset_id']}, keyword='{task['keyword']}', error={e}")
+                print(f"  Raw output: {truncated_output}")
                 continue
 
         # Commit the data to the DB immediately (once this batch is processed)
@@ -279,6 +309,17 @@ def run(args_list):
         print(f"Chunk {current_chunk} securely committed to SQLite disk. Total valid sentences so far: {success_count * CHUNK_SIZE}")
 
     print(f"\nDone! Successfully generated data for {success_count * CHUNK_SIZE} sentences across {NUM_OF_DATASETS} datasets.")
+
+    # Print validation summary
+    print("\n" + "="*50)
+    print("VALIDATION SUMMARY")
+    print("="*50)
+    print(f"JSON parsing failures: {json_failure_count}")
+    print(f"Sentences with Chinese characters: {non_english_sentence_count}")
+    print(f"Datasets affected by Chinese characters: {len(non_english_dataset_ids)}")
+    if non_english_dataset_ids:
+        sample_ids = list(non_english_dataset_ids)[:10]
+        print(f"  Sample affected dataset_ids: {sample_ids}")
 
     # Close the connection when completely finished
     conn.close()
