@@ -92,6 +92,7 @@ def repair_database(db_path):
     NUM_KEYWORDS = 5
     TARGET_SENTENCES_PER_KEYWORD = TARGET_SENTENCES_PER_DATASET // NUM_KEYWORDS  # 100
     MAX_CHUNK_SIZE = 10
+    MIN_CHUNK_SIZE = 5  # Always request at least 5 sentences to avoid truncation issues
 
     # Identify all datasets that don't have exactly 500 sentences
     print('-' * 50)
@@ -122,8 +123,8 @@ def repair_database(db_path):
     print('-' * 50)
     print("Analyzing sentence counts per keyword for incomplete datasets...")
 
-    # Group tasks by num_sentences for efficient batch processing with same schema
-    tasks_by_size = {i: [] for i in range(1, MAX_CHUNK_SIZE + 1)}
+    # Group tasks by request_size for efficient batch processing with same schema
+    tasks_by_size = {i: [] for i in range(MIN_CHUNK_SIZE, MAX_CHUNK_SIZE + 1)}
 
     for dataset_id, current_count in tqdm(incomplete_datasets, desc="Building repair tasks"):
         # Get keywords for this dataset with their current sentence counts
@@ -143,37 +144,41 @@ def repair_database(db_path):
             # Determine number of sentences needed to complete the dataset
             sentences_needed = TARGET_SENTENCES_PER_KEYWORD - count
 
-            # While sentences needed are not fullfulled
+            # While sentences needed are not fulfilled
             while sentences_needed > 0:
-                # Determine chunk size for this task (max 10, or whatever's left)
-                chunk_size = min(sentences_needed, MAX_CHUNK_SIZE)
+                # Determine how many we actually need for this task
+                sentences_to_insert = min(sentences_needed, MAX_CHUNK_SIZE)
+
+                # Always request at least MIN_CHUNK_SIZE to avoid truncation issues
+                request_size = max(sentences_to_insert, MIN_CHUNK_SIZE)
 
                 # Construct messages
                 messages = [
                     {"role": "system", "content": SENTENCE_GENERATION_SYSTEM_PROMPT},
-                    {"role": "user", "content": f"Target Keyword: {keyword}. Generate a JSON with {chunk_size} unique sentences without using the keyword."}
+                    {"role": "user", "content": f"Target Keyword: {keyword}. Generate a JSON with {request_size} unique sentences without using the keyword."}
                 ]
 
-                # Insert a task for current chunk size
-                tasks_by_size[chunk_size].append({
+                # Insert a task for current request size
+                tasks_by_size[request_size].append({
                     "dataset_id": dataset_id,
                     "keyword_id": keyword_id,
                     "keyword": keyword,
                     "messages": messages,
-                    "num_sentences": chunk_size
+                    "request_size": request_size,
+                    "sentences_to_insert": sentences_to_insert  # Only insert this many
                 })
 
-                # Subtract chunk size from the sentences needed, as we have created a task for this
-                sentences_needed -= chunk_size
+                # Subtract sentences_to_insert from the sentences needed, as we have created a task for this
+                sentences_needed -= sentences_to_insert
 
     # Determine total number of tasks to execute
     total_tasks = sum(len(tasks) for tasks in tasks_by_size.values())
-    print(f"Created {total_tasks} repair tasks grouped by sentence count:")
+    print(f"Created {total_tasks} repair tasks grouped by request size:")
 
-    # For each (task_size, task) pair, print their info
+    # For each (request_size, tasks) pair, print their info
     for size, tasks in tasks_by_size.items():
         if tasks:
-            print(f"  {size} sentences: {len(tasks)} tasks")
+            print(f"  Request {size} sentences: {len(tasks)} tasks")
     print('-' * 50)
 
     # If there are no tasks at all, then exit
@@ -204,18 +209,18 @@ def repair_database(db_path):
 
     VLLM_BATCH_SIZE = 10_000
 
-    # Process each group of tasks with the same sentence count (same JSON schema)
-    for num_sentences in range(1, MAX_CHUNK_SIZE + 1):
+    # Process each group of tasks with the same request size (same JSON schema)
+    for request_size in range(MIN_CHUNK_SIZE, MAX_CHUNK_SIZE + 1):
 
         # Retrieve all tasks of the current group
-        group_tasks = tasks_by_size[num_sentences]
+        group_tasks = tasks_by_size[request_size]
 
         # If there are no tasks for the current group, then proceed to the next group
         if not group_tasks:
             continue
 
         print(f"\n" + "=" * 50)
-        print(f"Processing {len(group_tasks)} tasks requesting {num_sentences} sentence(s) each...")
+        print(f"Processing {len(group_tasks)} tasks requesting {request_size} sentence(s) each...")
         print("=" * 50)
 
         # Create sampling params with the correct JSON schema for this group
@@ -223,11 +228,11 @@ def repair_database(db_path):
             temperature=0.4,
             presence_penalty=0.5,
             max_tokens=1000,
-            structured_outputs=StructuredOutputsParams(json=get_json_schema(num_sentences))
+            structured_outputs=StructuredOutputsParams(json=get_json_schema(request_size))
         )
 
         # Process in batches
-        for i in tqdm(range(0, len(group_tasks), VLLM_BATCH_SIZE), desc=f"Processing {num_sentences}-sentence batches"):
+        for i in tqdm(range(0, len(group_tasks), VLLM_BATCH_SIZE), desc=f"Processing {request_size}-sentence batches"):
 
             # Get the batch of tasks and create a batch of converations from it
             batch_tasks = group_tasks[i:i + VLLM_BATCH_SIZE]
@@ -246,9 +251,16 @@ def repair_database(db_path):
                     # Try decoding to a json
                     data = json.loads(generated_text)
 
+                    # Track how many sentences we've inserted for this task
+                    task_inserted = 0
+                    max_to_insert = task["sentences_to_insert"]
 
                     # For each sentence in the json's "sentences" field
                     for idx, sentence in enumerate(data.get("sentences", [])):
+
+                        # Stop if we've inserted enough for this task
+                        if task_inserted >= max_to_insert:
+                            break
 
                         # Normalize the sentence
                         normalized_sentence = sentence.strip().lower()
@@ -274,6 +286,7 @@ def repair_database(db_path):
                             (task["dataset_id"], task["keyword_id"], sentence, split)
                         )
                         sentences_inserted += 1
+                        task_inserted += 1
 
                     success_count += 1
 

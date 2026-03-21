@@ -140,8 +140,7 @@ def run(args_list):
     parser.add_argument("--epochs", type=int, default=6)
     parser.add_argument("--num_tokens", type=int, default=20)
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--db_path", type=str, default="./datasets/mapper_classification_datasets/classification_5k.sqlite")
-    parser.add_argument("--training_stats_dir_path", type=str, default="./training_stats")
+    parser.add_argument("--db_path", type=str, default="./datasets/mapper_classification_datasets/DoD_2_5k_Mistral.sqlite")
     parser.add_argument("--seed", type=int, default=47)
     args, _ = parser.parse_known_args(args_list)
     
@@ -157,7 +156,7 @@ def run(args_list):
     SEED = args.seed
 
     # Other Global Variables
-    DB_NAME = DB_PATH.split("/")[-1]
+    DB_NAME = DB_PATH.split("/")[-1].split(".")[0]
     TRAINING_STATS_FILE_PATH = f"{TRAINING_STATS_DIR_PATH}/{DB_NAME}/training_stats.csv"
 
     # Determine DEVICE and DTYPE
@@ -213,6 +212,10 @@ def run(args_list):
         'train_accuracy': [],
         'validation_accuracy': []
     }
+
+    # Create Parent Directory to save all soft prompts for this Dataset
+    parent_dir = f"./trained_soft_prompts/{DB_NAME}"
+    os.makedirs(parent_dir, exist_ok=True)
 
     # Loop over all dataset ids
     for dataset_id in dataset_pbar:
