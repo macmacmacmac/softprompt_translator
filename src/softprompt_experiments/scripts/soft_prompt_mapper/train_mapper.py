@@ -72,8 +72,7 @@ def run(args_list=None):
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_tokens", type=int, default=20)
-    parser.add_argument("--train_dataset_path", type=str, default="./datasets/mapper_training_dataset/train_mapper_dataset.pt")
-    parser.add_argument("--val_dataset_path", type=str, default="./datasets/mapper_training_dataset/val_mapper_dataset.pt")
+    parser.add_argument("--mapper_dataset_path", type=str, default="./datasets/mapper_training_dataset/DoD_2_5k_Mistral")
     parser.add_argument("--save_dir", type=str, default="./mapper_lora_weights")
     parser.add_argument("--lora_rank", type=int, default=4)
     parser.add_argument("--lora_dropout", type=float, default=0.1)
@@ -82,8 +81,8 @@ def run(args_list=None):
 
     # Parse all the arguments into Variables
     MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
-    TRAIN_DATASET_PATH = args.train_dataset_path
-    VAL_DATASET_PATH = args.val_dataset_path
+    MAPPER_DATASET_PATH = args.mapper_dataset_path
+    DB_NAME = MAPPER_DATASET_PATH.split('/')[-1]
     SAVE_DIR = args.save_dir
     LR = args.lr
     EPOCHS = args.epochs
@@ -137,8 +136,8 @@ def run(args_list=None):
     # │                   DATASET PREP                │
     # └───────────────────────────────────────────────┘
     print("Loading Train and Validation datasets ...")
-    train_dataset = torch.load(TRAIN_DATASET_PATH, map_location="cpu", weights_only=True)
-    val_dataset = torch.load(VAL_DATASET_PATH, map_location="cpu", weights_only=True)
+    train_dataset = torch.load(os.path.join(MAPPER_DATASET_PATH, 'train_mapper_dataset.pt'), map_location="cpu", weights_only=True)
+    val_dataset = torch.load(os.path.join(MAPPER_DATASET_PATH, 'val_mapper_dataset.pt'), map_location="cpu", weights_only=True)
     
     print(f"Train Dataset size: {len(train_dataset)} | Validation Dataset size: {len(val_dataset)}")
 
@@ -314,7 +313,8 @@ def run(args_list=None):
     # ┌───────────────────────────────────────────────┐
     # │               SAVE LORA ADAPTERS              │
     # └───────────────────────────────────────────────┘
-    os.makedirs(SAVE_DIR, exist_ok=True)
-    model.save_pretrained(SAVE_DIR)
-    tokenizer.save_pretrained(SAVE_DIR)
-    print(f"Mapper training complete! PEFT LoRA weights saved to {SAVE_DIR}")
+    lora_weights_save_dir = os.path.join(SAVE_DIR, DB_NAME)
+    os.makedirs(lora_weights_save_dir, exist_ok=True)
+    model.save_pretrained(lora_weights_save_dir)
+    tokenizer.save_pretrained(lora_weights_save_dir)
+    print(f"Mapper training complete! PEFT LoRA weights saved to {lora_weights_save_dir}")
