@@ -13,7 +13,7 @@ def run(args_list):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--db_path", type=str, default="./datasets/mapper_classification_datasets/DoD_2_5k_Mistral.sqlite")
+    parser.add_argument("--db_path", type=str, default="./datasets/mapper_classification_datasets/DoD_2_5k_Mistral_transformed.sqlite")
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables
@@ -29,6 +29,14 @@ def analyze_database(db_path):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     print(f"Successfully Connected!")
+
+    # Find Count of sentences in the Datasets
+    cursor.execute("""
+        SELECT COUNT(sentence_id) as sentence_count
+        FROM sentences
+    """)
+    count = cursor.fetchall()
+    print(f"Found total {count} sentences in the DB {db_path}")
     
     # Identify all datasets that don't have exactly 500 sentences
     print('-' * 50)

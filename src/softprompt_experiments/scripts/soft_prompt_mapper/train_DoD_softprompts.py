@@ -208,9 +208,7 @@ def run(args_list):
     # Determine file path for accuracy stats
     ACCURACY_STATS_FILE_PATH = f"{PARENT_DIR}/accuracy_stats.csv"
 
-
-    # TODO: Test this
-    # TODO: Preload existing accuracy_stats, if it exists already
+    # Preload existing accuracy_stats, if it exists already
     if os.path.isfile(ACCURACY_STATS_FILE_PATH):
         df = pd.read_csv(ACCURACY_STATS_FILE_PATH)
         training_stats = df.to_dict(orient='list')
@@ -434,7 +432,6 @@ def run(args_list):
         tqdm.write(f"\nTraining complete! Soft prompt saved to {save_dir}/softprompt.pt")
 
 
-        # TODO: Test This
         # ┌───────────────────────────────────────────────┐
         # │            WRITE TRAINING STATS               │
         # └───────────────────────────────────────────────┘
