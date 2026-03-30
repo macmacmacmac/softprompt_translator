@@ -17,10 +17,8 @@ class CategoryItem(BaseModel):
 class DatasetBatch(BaseModel):
     datasets: List[CategoryItem] = Field(description="A list of generated classification datasets")
     
-
 # Define the exact JSON schema we want vLLM to force the model to follow.
 JSON_SCHEMA = json.dumps(DatasetBatch.model_json_schema())
-
 
 
 # Driver Code
@@ -34,7 +32,7 @@ def run(args_list):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num_of_datasets", type=int, default=5500)
+    parser.add_argument("--num_of_datasets", type=int, default=100)
     parser.add_argument("--json_processing_batch_size", type=int, default=20)
     parser.add_argument("--keyword_pickle_path", type=str, default="./datasets/mapper_classification_datasets/keywords_DoD3_5k.pkl")
     args, _ = parser.parse_known_args(args_list)
@@ -65,6 +63,8 @@ def run(args_list):
         structured_outputs = StructuredOutputsParams(json = JSON_SCHEMA)
     )
 
+    # TODO: Improve the system prompt as sometimes it is generating multi word keywords.
+    # TODO: Sometimes, while running 100 datasets, only 64 pass the Json Parsing and rest fail. Need to strengthen it
     # Create prompt structures.
     system_prompt = "You are an expert Machine Learning dataset curator. Your task is to generate diverse, semantically cohesive classification tasks."
     user_prompt = f"Generate exactly {JSON_PROCESSING_BATCH_SIZE} distinct classification categories. Vary the domains wildly. Do not repeat categories."
@@ -119,6 +119,8 @@ def run(args_list):
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
     print(f"\nSaving {len(semantic_dataset)} unique cohesive categories to {KEYWORD_PICKLE_PATH}...")
+
+    print(semantic_dataset)
     
     with open(KEYWORD_PICKLE_PATH, 'wb') as f:
         pickle.dump(semantic_dataset, f)
