@@ -107,10 +107,14 @@ def tokenize_dataset(examples,
     batch_size = len(examples[text_column])
 
     # Construct input text for each example
+    # TODO: This is different from the structure of how we trained DoD soft prompts
     inputs = [f"{text_column} : {x.strip()} Label : " for x in examples[text_column]]
+    # inputs = [f"Sentence: {x.strip()} Label:" for x in examples[text_column]]
 
     # Construct the target text for each example
+    # TODO: This is minor difference in how we trained DoD soft prompts in terms of extra spaces
     targets = [str(x) for x in examples[COMMON_TEXT_LABEL]]
+    # targets = [f" {x}" for x in examples[COMMON_TEXT_LABEL]]
 
     # Tokenize the input text and labels.
     model_inputs = tokenizer(inputs)
@@ -433,6 +437,7 @@ def run(args_list=None):
         base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
 
         # Prepare Soft Prompt Model
+        # TODO: Use Mac's SoftPrompt instead of PEFT library here
         soft_prompt_model = get_peft_model(base_model, prompt_tuning_config)
 
         # Prepare Save Dir for the Trained Tokens

@@ -3,8 +3,8 @@
 #SBATCH -n 8
 #SBATCH --mem=32g
 #SBATCH -J "DoD3"
-#SBATCH -p short
-#SBATCH -t 24:00:00
+#SBATCH -p long
+#SBATCH -t 5-00:00:00
 #SBATCH --gres=gpu:1
 #SBATCH -C A100
 #SBATCH -o logs.out
@@ -37,4 +37,4 @@ export PYTORCH_ALLOC_CONF=expandable_segments:True
 # -----------------------------
 # Run the Job (Example: Python Script / Module)
 # -----------------------------
-python -u -m run_experiment --scripts soft_prompt_mapper.repair_DoD
+python -u -m run_experiment --scripts soft_prompt_mapper.train_DoD_softprompts

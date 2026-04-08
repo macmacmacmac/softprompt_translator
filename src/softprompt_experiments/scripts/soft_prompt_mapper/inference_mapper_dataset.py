@@ -21,9 +21,9 @@ def run(args_list=None):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--val_dataset_path", type=str, default="./datasets/mapper_training_dataset/DoD_2_5k_Mistral_transformed/val_mapper_dataset.pt")
-    parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights/DoD_2_5k_Mistral_transformed")
-    parser.add_argument("--training_stats_path", type=str, default="./trained_soft_prompts/DoD_2_5k_Mistral_transformed/accuracy_stats.csv")
+    parser.add_argument("--val_dataset_path", type=str, default="./datasets/mapper_training_dataset/DoD_3_5k/val_mapper_dataset.pt")
+    parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights/DoD_3_5k")
+    parser.add_argument("--training_stats_path", type=str, default="./trained_soft_prompts/DoD_3_5k/accuracy_stats.csv")
     parser.add_argument("--sample", action='store_true', help="Use a sample of val dataset instead of the full val dataset")
     parser.add_argument("--num_samples", type=int, default=5)
     parser.add_argument("--num_tokens", type=int, default=20)
