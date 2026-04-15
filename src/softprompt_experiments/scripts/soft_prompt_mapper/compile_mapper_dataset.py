@@ -25,6 +25,7 @@ def run(args_list):
     parser.add_argument("--trained_soft_prompts_dir", type=str, default="./trained_soft_prompts")
     parser.add_argument("--compiled_dataset_dir", type=str, default="./datasets/mapper_training_dataset")
     parser.add_argument("--seed", type=int, default=47)
+    parser.add_argument("--limit", type=int, default=1616, help="Limit the number of mini-datasets to process (e.g., 2000)")
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables
@@ -32,6 +33,7 @@ def run(args_list):
     TRAINED_SOFT_PROMPTS_DIR = args.trained_soft_prompts_dir
     COMPILED_DATASET_DIR = args.compiled_dataset_dir
     SEED = args.seed
+    LIMIT = args.limit
 
     # Determine DB Name
     DB_NAME = DB_PATH.split('/')[-1].split('.')[0]
@@ -44,6 +46,13 @@ def run(args_list):
     cursor.execute("SELECT dataset_id, hard_prompt FROM datasets")
     rows = cursor.fetchall()
     conn.close()
+
+    # Optional: Limit the number of datasets if an argument is passed
+    if LIMIT is not None and LIMIT > 0:
+        print(f"Limiting processing to a random subset of {LIMIT} datasets...")
+        random.seed(SEED)  # To ensure reproducibility 
+        random.shuffle(rows)
+        rows = rows[:LIMIT]
 
     # Create a Dataset ID -> Hard Prompt Dict (Map)
     dataset_map = {row[0]: extract_just_keywords_from_hard_prompt(row[1]) for row in rows}
@@ -99,12 +108,20 @@ def run(args_list):
     train_data = compiled_data[:split_idx]
     val_data = compiled_data[split_idx:]
 
+    # Determine the directory name based on whether a LIMIT was provided
+    if LIMIT is not None and LIMIT > 0:
+        db_dir_name = f"{DB_NAME}_{LIMIT}"
+    else:
+        db_dir_name = DB_NAME
+
     # Create the Directory for saving the datasets
-    os.makedirs(os.path.join(COMPILED_DATASET_DIR, DB_NAME), exist_ok=True)
+    save_dir = os.path.join(COMPILED_DATASET_DIR, db_dir_name)
+    os.makedirs(save_dir, exist_ok=True)
     
     # Save the Training and Validation Datasets
-    train_dataset_path = os.path.join(COMPILED_DATASET_DIR, DB_NAME, 'train_mapper_dataset.pt')
-    val_dataset_path = os.path.join(COMPILED_DATASET_DIR, DB_NAME, 'val_mapper_dataset.pt')
+    train_dataset_path = os.path.join(save_dir, 'train_mapper_dataset.pt')
+    val_dataset_path = os.path.join(save_dir, 'val_mapper_dataset.pt')
+    
     torch.save(train_data, train_dataset_path)
     torch.save(val_data, val_dataset_path)
     
