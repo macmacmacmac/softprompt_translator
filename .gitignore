@@ -32,3 +32,6 @@ visualizations/
 
 # Ignore .egg-info related folders for version control
 *.egg-info
+
+# Allow ipython notebooks (used for EDA)
+!*.ipynb
