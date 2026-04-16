@@ -483,7 +483,7 @@ def run(args_list):
             training_stats['avg_train_loss'][idx] = round(best_train_loss, 4)
             training_stats['avg_val_loss'][idx] = round(best_val_loss, 4)
         else:
-            training_stats['dataset_id'].append(round(dataset_id, 4))
+            training_stats['dataset_id'].append(dataset_id)
             training_stats['train_accuracy'].append(round(best_train_accuracy, 4))
             training_stats['val_accuracy'].append(round(best_val_accuracy, 4))
             training_stats['avg_train_loss'].append(round(best_train_loss, 4))
