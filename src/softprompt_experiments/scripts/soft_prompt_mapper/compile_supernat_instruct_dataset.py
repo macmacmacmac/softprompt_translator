@@ -5,9 +5,7 @@ from typing import List, Dict
 import json
 from tqdm import tqdm
 
-def compile_task_data(tasks_dir, task_names: List[str]) -> List[Dict]:
-    # Init a list to store all JSON data
-    extracted_data = []
+def task_data_generator(tasks_dir, task_names: List[str]):
     
     # For every task name
     for task_name in tqdm(task_names):
@@ -29,7 +27,7 @@ def compile_task_data(tasks_dir, task_names: List[str]) -> List[Dict]:
         definition = task_data.get("Definition", [""])[0]
 
         # Multi-Value Fields (Lists) that can be represented as strings
-        input_language = convert_list_field_to_str(task_data.get("Input_kanguage", []))
+        input_language = convert_list_field_to_str(task_data.get("Input_language", []))
         output_language = convert_list_field_to_str(task_data.get("Output_language", []))
         instruction_language = convert_list_field_to_str(task_data.get("Instruction_language", []))
         categories = convert_list_field_to_str(task_data.get("Categories", []))
@@ -44,7 +42,7 @@ def compile_task_data(tasks_dir, task_names: List[str]) -> List[Dict]:
             
             # For each output per instance, create a new row
             for output in output_list:
-                extracted_data.append({
+                yield {
                     "task_name": task_name,
                     "instruction": definition,
                     "input_language": input_language,
@@ -53,9 +51,7 @@ def compile_task_data(tasks_dir, task_names: List[str]) -> List[Dict]:
                     "categories": categories,
                     "input": instance.get("input", ""),
                     "output": output,
-                })
-            
-    return extracted_data
+                }
 
 
 def convert_list_field_to_str(field: List[str]):
@@ -77,7 +73,7 @@ def run(args_list):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--local_dataset_dir_path", type=str, default="/home/surigo/Projects/WPI-Research-Projects/Soft-Prompts-Interpretability/Code/natural-instructions")
+    parser.add_argument("--local_dataset_dir_path", type=str, default="/home/sgoyal/natural-instructions")
     parser.add_argument("--english_only", action="store_true", help="Parse English only tasks")
     args, _ = parser.parse_known_args(args_list)
 
@@ -109,23 +105,23 @@ def run(args_list):
 
     # Compile Training Data
     print("Compiling train data...")
-    train_records = compile_task_data(TASKS_DIR, train_tasks)
-    print(f"Compiled {len(train_records)} examples for training")
+    train_dataset = Dataset.from_generator(
+        lambda: task_data_generator(TASKS_DIR, train_tasks)
+    )
+    print(f"Compiled {len(train_dataset)} examples for training")
 
     # Compile Testing Data
-    print("Compiling train data...")
-    test_records = compile_task_data(TASKS_DIR, test_tasks)
-    print(f"Compiled {len(test_records)} examples for testing")
-
+    print("Compiling testing data...")
+    test_dataset = Dataset.from_generator(
+        lambda: task_data_generator(TASKS_DIR, test_tasks)
+    )
+    print(f"Compiled {len(test_dataset)} examples for testing")
 
     # Convert to HF Dataset
-    train_dataset = Dataset.from_list(train_records)
-    test_dataset = Dataset.from_list(test_records)
     hf_dataset_dict = DatasetDict({
         "train": train_dataset,
         "test": test_dataset
     })
-
 
     # Push to HF Hub
     suffix = "english" if ENGLISH_ONLY else "xlingual"
