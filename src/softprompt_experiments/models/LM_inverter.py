@@ -43,11 +43,19 @@ class LM_inverter(InversionFromLogitsEmbModel):
         self,
         outputs: BaseModelOutput,
         attention_mask: torch.Tensor,
+        labels: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         B = len(attention_mask)
-        logits = outputs.logits[torch.arange(B), attention_mask.sum(1) - 1]
 
-        embeddings = logits.log_softmax(dim=1)
+        if labels == None:
+            last_logits_idxs = attention_mask.sum(1) - 1
+        else:
+            # first logit to predict the first label token
+            last_logits_idxs = (labels != -100).float().argmax(dim=1) - 1
+        
+        last_logits = outputs.logits[torch.arange(B), last_logits_idxs]
+
+        embeddings = last_logits.log_softmax(dim=1)
         zeros = torch.zeros(
             (B, self.num_zeros_to_add),
             dtype=embeddings.dtype,
@@ -130,9 +138,10 @@ class LM_inverter(InversionFromLogitsEmbModel):
             self, 
             model_outputs: BaseModelOutput, 
             attention_mask: torch.Tensor,
-            generation_kwargs: Dict[str, torch.Tensor]
+            generation_kwargs: Dict[str, torch.Tensor],
+            labels: Optional[torch.Tensor]=None
         ):
-        processed_embeddings = self._process_embedder_output(model_outputs, attention_mask)
+        processed_embeddings = self._process_embedder_output(model_outputs, attention_mask, labels=labels)
         print(f"processed_embeddings shape {processed_embeddings.shape}")
         inputs_embeds, attention_mask = self.project_embedding(processed_embeddings)
         print(f"inputs_embeds shape {inputs_embeds.shape}")

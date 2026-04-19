@@ -47,7 +47,8 @@ class Inversion_Prior(logit_priors.LogitPrior):
     def sample_z_prime_from_q(
             self, 
             x_z: BaseModelOutput, 
-            x_z_attn_mask: torch.Tensor
+            x_z_attn_mask: torch.Tensor,
+            labels: torch.Tensor,
         ):
         """
         Samples a z' ~ q(z'|x,z)
@@ -57,15 +58,16 @@ class Inversion_Prior(logit_priors.LogitPrior):
             z_prime = self.inversion_model.generate_from_output(
                 x_z,
                 x_z_attn_mask,
-                self.gen_kwargs
-            )[0]
+                self.gen_kwargs,
+                labels=labels,
+            )
             # decoded = self.inversion_model.tokenizer.batch_decode(
             #     inversion,
             #     skip_special_tokens=True
             # )
             return z_prime
         
-    def log_prob_q_of_z_prime(
+    def log_prob_q_of_z_prime_given_x_z(
             self,
             z_prime: torch.Tensor, 
             x_z: BaseModelOutput, 
@@ -76,54 +78,88 @@ class Inversion_Prior(logit_priors.LogitPrior):
         """
         outputs = self.inversion_model(x_z, z_prime, x_z_attn_mask)
         
+        # Method 1: actual
         # HF logits are shifted left like [b^,c^,d^,next_token^]
-        logits = outputs.logits[:, :-1]
-        labels = z_prime[:, 1:]
+        # logits = outputs.logits[:, :-1]
+        # labels = z_prime[:, 1:]
 
-        log_probs = F.log_softmax(logits, dim=-1)
+        # log_probs = F.log_softmax(logits, dim=-1)
 
-        token_log_probs = log_probs.gather(
-            -1, labels.unsqueeze(-1)
-        ).squeeze(-1)
+        # token_log_probs = log_probs.gather(
+        #     -1, labels.unsqueeze(-1)
+        # ).squeeze(-1)
+        # log_q = token_log_probs.sum(dim=-1)
 
-        # alternatively
-        # log_q = outputs.loss
 
-        log_q = token_log_probs.sum(dim=-1)
+        # Method 2: lazy
+        log_q = outputs.loss
+
         return log_q
+
+    def log_prob_p_of_z_prime(
+            self,
+            embs_z_prime: torch.Tensor,
+            attn_mask_z_prime: torch.tensor,
+            labels_z_prime: torch.Tensor
+        ):
+        """
+        Computes log p(z')
+        embs_z_prime: z_prime in llama emb space
+        """
+        loss = self.base_model(
+            input_embeds=embs_z_prime, 
+            attention_mask=attn_mask_z_prime,
+            labels=labels_z_prime
+        ).loss
+        num_tokens = (labels_z_prime != -100).sum()
+        log_prob = -loss * num_tokens
+        return log_prob
     
-    def log_p_y_x_z_prime(
+    def log_p_of_y_given_x_z_prime(
         self,
-        z_prime: torch.Tensor,
-        z_x_y: torch.Tensor,
-        attention_mask: torch.tensor,
-        labels: torch.Tensor,
+        embs_z_prime: torch.Tensor,
+        embs_z_x_y: torch.Tensor,
+        attn_mask_z_prime: torch.tensor,
+        attn_mask_z_x_y: torch.tensor,
+        labels_z_x_y: torch.Tensor,
+        softprompt_len: int
     ):
-        #TODO: build input_embeds somehow
-        # probably decode z_prime (tokenized in T5's tokenzier), then tokenize in Llama2's tokenizer
-        # 
-        output = self.inversion_model.embedder(
-            input_embeds=input_embeds,
-            attention_mask=None,
-            labels=labels
+        """
+            Computes loss using the new z_prime
+            z_x_y: input_embeds 
+        """
+        #1) remove soft prompt z from original sequence
+        x_y = z_x_y[:,softprompt_len:,:]
+        attn_mask_x_y = attn_mask_z_x_y[:,softprompt_len:,:]
+        labels_x_y = labels_z_x_y[:,softprompt_len:,:]
+
+        #2) stick hard prompt z prime in there
+        z_prime_x_y = torch.cat([embs_z_prime, embs_x_y], dim=1)
+        attn_mask_z_prime_x_y = torch.cat([attn_mask_z_prime, attn_mask_x_y], dim=1)
+        labels_z_prime = torch.full(
+            (labels_x_y.shape[0], embs_z_prime.shape[1] + suffix_emb.shape[1]),
+            -100,
+            dtype=labels.dtype,
+            device=device
         )
-        
-        return output.loss
+        labels_z_prime_x_y = torch.cat([labels_z_prime, labels_x_y], dim=1)
+
+        loss = self.base_model(
+            input_embeds=z_prime_x_y,
+            attention_mask=attn_mask_z_prime_x_y,
+            labels=labels_z_prime_x_y
+        ).loss
+        num_tokens = (labels_z_prime_x_y != -100).sum()
+        log_prob = -loss * num_tokens
+
+        return log_prob
     
     def build_batch(
         self,
         z_prime: torch.Tensor,
-        z_x_y: torch.Tensor,
-        attn_mask_z_x_y: torch.tensor,
-        labels_z_x_y: torch.Tensor,
     ):
         """
             z_prime: tokens in T5 token space [B,T_z',V]
-            z_x_y: tokens of softprompt+input+output in llama space, 
-                 passed through word_embeddings [B, T_sp+T_xy, D]
-            attention_mask: attention mask for input embeds
-                            [B, T_sp+T_xy, V]
-            labels: labels [B, T_sp+T_xy]
         """
         #1) decode z_prime into NL and retokenize it into Llama tokenspace
         #   then embed it
@@ -135,12 +171,15 @@ class Inversion_Prior(logit_priors.LogitPrior):
             decoded_z_prime,
             padding='longest', 
             return_tensors='pt',
-        )
-        attn_mask_z_prime = (z_prime_llama != self.base_tokenizer.pad_token_id).long()
-        z_prime_embs = self.word_embeddings(z_prime_llama)
+        )['input_ids']
 
-        #2) prep x_y
-        x_y
+        embs_z_prime = self.word_embeddings(z_prime_llama)
+        attn_mask_z_prime = (z_prime_llama != self.base_tokenizer.pad_token_id).long()
+
+        labels_z_prime = z_prime_llama.clone()
+        labels_z_prime[labels_z_prime==self.base_tokenizer.pad_token_id] = -100
+
+        return embs_z_prime, attn_mask_z_prime, labels_z_prime
 
     """
         Log_prob v1:
@@ -148,7 +187,7 @@ class Inversion_Prior(logit_priors.LogitPrior):
         - Compute CE between log p(y|z',x) and log(p|z,x)
         - Treat z^ as a detached random variable, no gradient
     """
-    def log_prob(self, output, attention_mask, **kwargs):
+    def log_prob(self, output, attn_mask_z_x_y, **kwargs):
         """
         output: transformers llm output
         attention_mask: [B, T]
@@ -161,41 +200,36 @@ class Inversion_Prior(logit_priors.LogitPrior):
         device = output.logits.device
 
         input_embeds = kwargs["input_embeds"]   # [B, T, D]
-        attention_mask = attention_mask         # [B, T]
+        attn_mask_z_x_y = kwargs["attn_mask_z_x_y"]         # [B, T]
         labels = kwargs["labels"]
         S = kwargs["softprompt_len"]
 
-        # -------------------------------------------------------
-        # 1. Sample Z' for each batch element (DETACHED)
-        # -------------------------------------------------------
+        # Sample z_primes [B, T, V] (t5 tokenized), build batch
+        z_primes = self.sample_z_prime_from_q(output, x_z_attn_mask, labels)
+        embs_z_prime, attn_mask_z_prime, labels_z_prime = self.build_batch(z_primes)
 
-        with torch.no_grad():
-            inversion = self.inversion_model.generate_from_output(
-                output,
-                attention_mask,
-                self.gen_kwargs
-            )
+        # Calc p(z_prime)
+        log_p_z_prime = self.log_prob_p_of_z_prime(embs_z_prime, attn_mask_z_prime, labels_z_prime)
 
-            decoded = self.inversion_model.tokenizer.batch_decode(
-                inversion,
-                skip_special_tokens=True
-            )
+        # Calc p(y|x,z_prime)
+        log_p_y_x_z_prime = self.log_p_of_y_given_x_z_prime(
+            embs_z_prime, 
+            input_embeds,
+            attn_mask_z_prime,
+            attn_mask_z_x_y,
+            labels,
+            S
+        )
 
-            hardprompt = self.base_tokenizer(
-                decoded,
-                add_special_tokens=False,
-                padding=True,
-                truncation=True,
-                return_tensors="pt"
-            )
+        reward = (
+            # v1: just reconstruction and NL loss
+            log_p_y_x_z_prime + log_p_z_prime
 
-            hardprompt = {k: v.to(device) for k, v in hardprompt.items()}
-
-            # IMPORTANT: per-sample lengths
-            input_ids = hardprompt["input_ids"]          # [B, L_i (padded)]
-            attn = hardprompt["attention_mask"]
-
-            Z_prime_embeds = self.word_embeddings(input_ids)  # [B, L_i, D]
-
+            # full:
+            # log_p_y_x_z_prime + CE_pz_pz_prime + log_p_z_prime - log_q_z_prime_x_z
+        )
+        loss = (
+            log_q_z_prime_x_z * reward.detach()
+        )
         
         return loss
