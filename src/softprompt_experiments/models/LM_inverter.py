@@ -16,6 +16,9 @@ from transformers.modeling_outputs import BaseModelOutput
 
 from vec2text.models.config import InversionConfig
 from vec2text.models import InversionFromLogitsEmbModel
+from vec2text.models.model_utils import (
+    load_encoder_decoder,
+)
 
 def args_from_config(args_cls, config):
     args = args_cls()
@@ -27,7 +30,10 @@ def args_from_config(args_cls, config):
 NAME ="jxm/t5-base__llama-7b__one-million-instructions__emb"
 
 def load_model(embedder, embedder_tokenizer):
-    inv_model = LM_inverter.from_pretrained(NAME, embedder=embedder, embedder_tokenizer=embedder_tokenizer)
+    model_kwargs = {"low_cpu_mem_usage": True}
+    encoder_decoder = load_encoder_decoder("t5-base")
+
+    inv_model = LM_inverter.from_pretrained(NAME, embedder=embedder, embedder_tokenizer=embedder_tokenizer, encoder_decoder=encoder_decoder)
     return inv_model
 
 class LM_inverter(InversionFromLogitsEmbModel):
@@ -42,10 +48,10 @@ class LM_inverter(InversionFromLogitsEmbModel):
     def _process_embedder_output(
         self,
         outputs: BaseModelOutput,
-        attention_mask: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        B = len(attention_mask)
+        B = outputs.logits.shape[0]
 
         if labels == None:
             last_logits_idxs = attention_mask.sum(1) - 1
@@ -137,14 +143,12 @@ class LM_inverter(InversionFromLogitsEmbModel):
     def generate_from_output(
             self, 
             model_outputs: BaseModelOutput, 
-            attention_mask: torch.Tensor,
             generation_kwargs: Dict[str, torch.Tensor],
+            attention_mask: Optional[torch.Tensor]=None,
             labels: Optional[torch.Tensor]=None
         ):
         processed_embeddings = self._process_embedder_output(model_outputs, attention_mask, labels=labels)
-        print(f"processed_embeddings shape {processed_embeddings.shape}")
         inputs_embeds, attention_mask = self.project_embedding(processed_embeddings)
-        print(f"inputs_embeds shape {inputs_embeds.shape}")
         return self.encoder_decoder.generate(
             # required: input embeddings
             inputs_embeds=inputs_embeds,
@@ -158,11 +162,11 @@ class LM_inverter(InversionFromLogitsEmbModel):
     def forward(
         self, 
         model_outputs: BaseModelOutput,
-        labels: torch.Tensor, 
-        attention_mask: torch.Tensor,
+        labels: Optional[torch.Tensor]=None,
+        attention_mask: Optional[torch.Tensor]=None,
     ):
         # attention mask just here to tell us where the last valid token is
-        processed_embeddings = self._process_embedder_output(model_outputs, attention_mask)
+        processed_embeddings = self._process_embedder_output(model_outputs, attention_mask=attention_mask, labels=labels)
         inputs_embeds, attention_mask = self.project_embedding(processed_embeddings)
 
         return self.encoder_decoder(

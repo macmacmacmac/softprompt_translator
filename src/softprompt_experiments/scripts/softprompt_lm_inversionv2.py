@@ -104,8 +104,8 @@ def run(args_list):
         output = model(**tokenized_text)
         inversion = inversion_model.generate_from_output(
             output,
-            tokenized_text['attention_mask'],
-            gen_kwargs
+            gen_kwargs,
+            attention_mask=tokenized_text['attention_mask'],
         )[0]
         logger.info(f"inversion tokens: {inversion}")
         decoded_inversion = inversion_model.tokenizer.decode(inversion,skip_special_tokens=True)

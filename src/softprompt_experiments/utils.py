@@ -615,6 +615,7 @@ def train_softprompt_from_tokenized(
         softprompt.train()
         train_loss = 0.0
         for i, batch in enumerate(tqdm(train_loader) if verbose_level=='batch' else train_loader):
+            print(f"running batch {i}")
             input_ids, labels = [b.to(device) for b in batch]
             batchsize = input_ids.size(0)
 
@@ -644,6 +645,7 @@ def train_softprompt_from_tokenized(
 
             # HF autoregressive LM loss
             loss, batch_entropy = softprompt.loss_fn(full_embeds, labels_adjusted, attention_mask, return_entropy=True)
+            logger.info(f"Batch:{i}, train_loss: {loss}, entropy: {batch_entropy}")
             loss = loss - entropy_reg_constant*batch_entropy
 
             loss.backward()

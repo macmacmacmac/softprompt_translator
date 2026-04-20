@@ -65,6 +65,7 @@ class SquishyPrompt(SoftPrompt):
         """
         # attention_mask = (labels != -100).long()
         # print(labels)
+        # print("computing normal loss")
         outputs = self._model(
             inputs_embeds=input_embeds,
             attention_mask=attention_mask,   # fully causal
@@ -74,10 +75,11 @@ class SquishyPrompt(SoftPrompt):
         # last_logits = get_last_token_logits(logits, attention_mask) # [B, V]
         # sp_logits = logits[torch.arange(logits.size(0)), self.num_tokens]
 
+        # print("computing prior term")
         prior_term = self.logits_prior.log_prob(
             outputs, 
             attention_mask,
-            inputs_embeds=input_embeds,
+            input_embeds=input_embeds,
             labels=labels,
             softprompt_len=self.num_tokens
         ).mean()

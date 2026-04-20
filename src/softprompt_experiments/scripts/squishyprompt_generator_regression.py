@@ -14,9 +14,9 @@ from tqdm.auto import tqdm
 import numpy as np
 
 from softprompt_experiments.models.squishyprompt import SquishyPrompt
-from softprompt_experiments.models.priors.GMM_prior import (
-    GMM_prior
-)
+from softprompt_experiments.models.priors.GMM_prior import GMM_prior
+from softprompt_experiments.models.priors.LM_inverter_prior import LM_inverter_prior
+
 from softprompt_experiments.utils import (
     get_train_test_from_tokenized, 
     train_softprompt_from_tokenized,
@@ -27,6 +27,8 @@ from softprompt_experiments.utils import (
 
 from peft import PromptTuningInit, PromptTuningConfig, get_peft_model
 import logging
+
+# --scripts dataset_nl_custom squishyprompt_generator_regression softprompt_lm_inversion --model_name 'meta-llama/Llama-2-7b-hf' --save_directory ./datasets/logit_prior_inv --verbose --lambd 0.1
 
 def run(args_list):
     exp_name = os.path.basename(__file__)
@@ -148,7 +150,8 @@ def run(args_list):
             init = INIT
         
         # logger.info("Initial tokens: ", init)
-        logits_prior = GMM_prior()
+        # logits_prior = GMM_prior()
+        logits_prior = LM_inverter_prior(model, tokenizer, word_embeddings)
         squishyprompt = SquishyPrompt(
             logits_prior=logits_prior,
             model=model, 
