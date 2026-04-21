@@ -7,8 +7,8 @@
 #SBATCH -t 24:00:00
 #SBATCH --gres=gpu:1
 #SBATCH -C A100
-#SBATCH -o inference_InSPEcT_softprompts_DoD2_logs.out
-#SBATCH -e inference_InSPEcT_softprompts_DoD2_logs.out
+#SBATCH -o paraphrase.out
+#SBATCH -e paraphrase.out
 
 # -----------------------------
 # Load Required Modules
@@ -37,4 +37,4 @@ export PYTORCH_ALLOC_CONF=expandable_segments:True
 # -----------------------------
 # Run the Job (Example: Python Script / Module)
 # -----------------------------
-python -u -m run_experiment --scripts soft_prompt_mapper.inference_InSPEcT_softprompts
+python -u -m run_experiment --scripts soft_prompt_mapper.paraphrase_supernat_instruct

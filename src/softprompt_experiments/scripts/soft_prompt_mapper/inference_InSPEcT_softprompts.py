@@ -130,7 +130,7 @@ def run(args_list=None):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--inspect_soft_prompts_dir", type=str, default="./inspect_soft_prompts")
-    parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights/DoD_3_5k_1616")
+    parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights/DoD_3_5k_700")
     parser.add_argument("--num_tokens", type=int, default=20)
     parser.add_argument("--seed", type=int, default=47)
     parser.add_argument("--inspect", action="store_true", help="Run InSPEcT technique for comparison")

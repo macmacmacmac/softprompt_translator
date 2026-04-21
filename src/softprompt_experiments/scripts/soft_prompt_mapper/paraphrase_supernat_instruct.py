@@ -5,6 +5,7 @@ from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
 from tqdm import tqdm
 import gc
+import json
 
 def run(args_list):
     exp_name = os.path.basename(__file__)
@@ -24,46 +25,53 @@ def run(args_list):
     TOKEN_THRESHOLD = args.token_threshold
 
     # Load the original dataset
-    print(f"Loading dataset {DATASET_PATH}...")
+    print(f"\nLoading dataset {DATASET_PATH}...")
     dataset_dict = load_dataset(DATASET_PATH)
 
-    # Extract unique instructions globally (assuming task_name corresponds 1:1 to an instruction)
-    print("Extracting unique task instructions...")
+    # Drop reduced_instruction column if it already exists
+    for split in dataset_dict.keys():
+        if "reduced_instruction" in dataset_dict[split].column_names:
+            dataset_dict[split] = dataset_dict[split].remove_columns("reduced_instruction")
 
-    # We will build a dictionary: task_name -> original_instruction
-    unique_tasks = {}
+    # Extract unique instructions globally
+    print(f"\nExtracting unique instructions...")
+
+    # We will build a dict mapping instruction to a set of task_names
+    # str -> set()
+    unique_instructions = {}
     
-    # Iterate over train and test splits to find all unique task_names and their instructions
+    # Iterate over train and test splits to find all unique instructions
     for split in dataset_dict.keys():
         for row in dataset_dict[split]:
-            task_name = row["task_name"]
-            if task_name not in unique_tasks:
-                unique_tasks[task_name] = row["instruction"]
+            inst = row["instruction"]
+            if inst not in unique_instructions:
+                unique_instructions[inst] = set()
+            unique_instructions[inst].add(row["task_name"])
 
-    print(f"Found {len(unique_tasks)} unique tasks across the dataset.")
+    print(f"\nFound {len(unique_instructions)} unique instructions across the dataset.")
 
     # Tokenize and filter tasks that exceed the threshold
-    print(f"Loading Tokenizer {TOKENIZER_MODEL}...")
+    print(f"\nLoading Tokenizer {TOKENIZER_MODEL}...")
     tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_MODEL)
 
-    tasks_to_paraphrase = {}  # task_name -> instruction
-    paraphrased_map = {}      # task_name -> reduced_instruction
+    instructions_to_paraphrase = []  # list of instructions
+    paraphrased_map = {}             # original_instruction -> reduced_instruction
 
-    print("Checking token lengths...")
-    for task_name, instruction in tqdm(unique_tasks.items(), desc="Tokenizing"):
+    print(f"\nChecking token lengths...")
+    for instruction in tqdm(unique_instructions.keys(), desc="Tokenizing"):
         # We don't need the actual tokens, just the count
         token_count = len(tokenizer.encode(instruction, add_special_tokens=False))
         if token_count > TOKEN_THRESHOLD:
-            tasks_to_paraphrase[task_name] = instruction
+            instructions_to_paraphrase.append(instruction)
         else:
             # If it's already short enough, the reduced instruction is the same as the original
-            paraphrased_map[task_name] = instruction
+            paraphrased_map[instruction] = instruction
 
-    print(f"Tasks needing paraphrasing (> {TOKEN_THRESHOLD} tokens): {len(tasks_to_paraphrase)}")
+    print(f"\nInstructions needing paraphrasing (> {TOKEN_THRESHOLD} tokens): {len(instructions_to_paraphrase)}")
 
     # Generate paraphrases if needed
-    if len(tasks_to_paraphrase) > 0:
-        print(f"Loading {TEACHER_MODEL} into vLLM...")
+    if len(instructions_to_paraphrase) > 0:
+        print(f"\nLoading {TEACHER_MODEL} into vLLM...")
         llm = LLM(
             model=TEACHER_MODEL,
             tokenizer_mode="mistral",
@@ -91,38 +99,50 @@ def run(args_list):
             "Output ONLY the paraphrased instruction text and absolutely nothing else. Do NOT include phrases like 'Here is the paraphrased version'."
         )
 
-        task_names_list = list(tasks_to_paraphrase.keys())
         messages_list = [
             [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Instruction:\n{tasks_to_paraphrase[tn]}"}
+                {"role": "user", "content": f"Instruction:\n{inst}"}
             ]
-            for tn in task_names_list
+            for inst in instructions_to_paraphrase
         ]
 
-        print("Generating paraphrased instructions in batches...")
+        print(f"\nGenerating paraphrased instructions in batches...")
         outputs = llm.chat(messages=messages_list, sampling_params=sampling_params)
 
         for i, output in enumerate(outputs):
-            task_name = task_names_list[i]
+            inst = instructions_to_paraphrase[i]
             # Strip whitespace just in case the model padded the output
             reduced_text = output.outputs[0].text.strip()
-            paraphrased_map[task_name] = reduced_text
+            paraphrased_map[inst] = reduced_text
+
+        print(f"\nSaving a log of the paraphrased instructions to 'paraphrased_instructions_log.json'...")
+        log_data = []
+        for inst in instructions_to_paraphrase:
+            log_data.append({
+                "task_names": list(unique_instructions[inst]),
+                "original_instruction": inst,
+                "reduced_instruction": paraphrased_map[inst]
+            })
+        
+        with open("paraphrased_instructions_log.json", "w", encoding="utf-8") as f:
+            json.dump(log_data, f, indent=4)
 
         # We delete the LLM object to free up GPU VRAM just in case it takes up too much memory during the map step
         del llm
         gc.collect()
 
     # Map the reduced instructions back to the main dataset
-    print("Mapping paraphrased instructions back to the main dataset rows...")
+    print(f"\nMapping paraphrased instructions back to the main dataset rows...")
     
     def add_reduced_instruction(example):
-        example["reduced_instruction"] = paraphrased_map[example["task_name"]]
+        example["reduced_instruction"] = paraphrased_map[example["instruction"]]
         return example
 
     # Using map with batched=False here is extremely fast for dictionary lookups
     dataset_dict = dataset_dict.map(add_reduced_instruction, desc="Applying mapping")
 
     # Push to HuggingFace
-    print(f"Pushing updated dataset to {DATASET_PATH}...")
+    print(f"\nPushing updated dataset to {DATASET_PATH}...")
     dataset_dict.push_to_hub(DATASET_PATH)
+    print(f"\nSuccessfully pushed to Hugging Face at path {DATASET_PATH}")
