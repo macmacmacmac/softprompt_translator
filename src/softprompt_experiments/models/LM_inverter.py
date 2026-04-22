@@ -47,20 +47,9 @@ class LM_inverter(InversionFromLogitsEmbModel):
 
     def _process_embedder_output(
         self,
-        outputs: BaseModelOutput,
-        attention_mask: Optional[torch.Tensor] = None,
-        labels: Optional[torch.Tensor] = None
+        last_logits: torch.Tensor,
     ) -> torch.Tensor:
-        B = outputs.logits.shape[0]
-
-        if labels == None:
-            last_logits_idxs = attention_mask.sum(1) - 1
-        else:
-            # first logit to predict the first label token
-            last_logits_idxs = (labels != -100).float().argmax(dim=1) - 1
-        
-        last_logits = outputs.logits[torch.arange(B), last_logits_idxs]
-
+        B = last_logits.shape[0]
         embeddings = last_logits.log_softmax(dim=1)
         zeros = torch.zeros(
             (B, self.num_zeros_to_add),
@@ -142,12 +131,10 @@ class LM_inverter(InversionFromLogitsEmbModel):
 
     def generate_from_output(
             self, 
-            model_outputs: BaseModelOutput, 
+            last_logits: torch.Tensor, 
             generation_kwargs: Dict[str, torch.Tensor],
-            attention_mask: Optional[torch.Tensor]=None,
-            labels: Optional[torch.Tensor]=None
         ):
-        processed_embeddings = self._process_embedder_output(model_outputs, attention_mask, labels=labels)
+        processed_embeddings = self._process_embedder_output(last_logits)
         inputs_embeds, attention_mask = self.project_embedding(processed_embeddings)
         return self.encoder_decoder.generate(
             # required: input embeddings
@@ -161,12 +148,11 @@ class LM_inverter(InversionFromLogitsEmbModel):
 
     def forward(
         self, 
-        model_outputs: BaseModelOutput,
+        last_logits: torch.Tensor,
         labels: Optional[torch.Tensor]=None,
-        attention_mask: Optional[torch.Tensor]=None,
     ):
         # attention mask just here to tell us where the last valid token is
-        processed_embeddings = self._process_embedder_output(model_outputs, attention_mask=attention_mask, labels=labels)
+        processed_embeddings = self._process_embedder_output(last_logits)
         inputs_embeds, attention_mask = self.project_embedding(processed_embeddings)
 
         return self.encoder_decoder(

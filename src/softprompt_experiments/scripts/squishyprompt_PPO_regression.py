@@ -151,7 +151,7 @@ def run(args_list):
         
         # logger.info("Initial tokens: ", init)
         # logits_prior = GMM_prior()
-        logits_prior = LM_inverter_prior(model, tokenizer, word_embeddings)
+        logits_prior = LM_inverter_prior(model, tokenizer, word_embeddings, NUM_TOKENS)
         squishyprompt = SquishyPrompt(
             logits_prior=logits_prior,
             model=model, 
@@ -355,7 +355,7 @@ def run(args_list):
                 indices = torch.randperm(len(traj_buffer))
 
                 for i in indices:
-                    logger.info(f"[UPDATE] batch {i}")
+                    logger.info(f"EPOCH: {epoch}, [PPO UPDATE] batch {i}")
                     
                     batch_state = rollout_buffer[i]
                     traj = traj_buffer[i]
@@ -376,8 +376,11 @@ def run(args_list):
                         baseline=value_pred
                     )
 
-                    loss = normal_loss + LAMBD * ppo_loss
-                    logger.info(f"Normal loss: {normal_loss:.3f}, ppo_loss: {ppo_loss:.3f}")
+                    loss = normal_loss - LAMBD * ppo_loss
+                    logger.info(
+                        f"\tNormal loss: {normal_loss:.3f},\n"
+                        f"\tPPO loss: {ppo_loss:.3f}"
+                    )
                     loss.backward()
                     optimizer.step()
                     optimizer.zero_grad()
