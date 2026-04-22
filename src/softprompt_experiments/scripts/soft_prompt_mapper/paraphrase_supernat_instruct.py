@@ -3,9 +3,11 @@ import argparse
 from datasets import load_dataset
 from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
+from vllm.distributed.parallel_state import destroy_model_parallel
 from tqdm import tqdm
 import gc
 import json
+import torch
 
 def run(args_list):
     exp_name = os.path.basename(__file__)
@@ -56,11 +58,13 @@ def run(args_list):
 
     instructions_to_paraphrase = []  # list of instructions
     paraphrased_map = {}             # original_instruction -> reduced_instruction
+    original_token_counts = {}       # original_instruction -> token_count
 
     print(f"\nChecking token lengths...")
     for instruction in tqdm(unique_instructions.keys(), desc="Tokenizing"):
         # We don't need the actual tokens, just the count
         token_count = len(tokenizer.encode(instruction, add_special_tokens=False))
+        original_token_counts[instruction] = token_count
         if token_count > TOKEN_THRESHOLD:
             instructions_to_paraphrase.append(instruction)
         else:
@@ -81,21 +85,22 @@ def run(args_list):
             enable_prefix_caching=True,
             max_model_len=4096,
             max_num_seqs=256,
-            gpu_memory_utilization=0.95,
+            gpu_memory_utilization=0.85,
         )
 
         sampling_params = SamplingParams(
             temperature=0.3,
             presence_penalty=0.5,
-            max_tokens=TOKEN_THRESHOLD,  # Force model to keep it short
+            max_tokens=300,  # Give Mistral enough room to finish its thought, instead of tying it to Llama's token count
         )
 
         # TODO: Refine this further after spot checking
         system_prompt = (
             "You are an expert at simplifying and extremely condensing instructions. "
             "Your task is to paraphrase the following instruction into a highly concise statement. "
-            "Extract ONLY the core objective, input format, and output constraints. "
-            "Use a maximum of 2 to 3 short sentences and strip away all filler words, long examples, and redundant explanations. "
+            "CRITICAL: You MUST explicitly preserve all specific classes, exact tags, labels, output formats, and special syntax constraints. "
+            "CRITICAL: Do NOT oversimplify or remove specific mappings between concepts (e.g., specifying which sentence is the premise, exact sentence counts, positional logic, or structural relationships). "
+            "Use a maximum of 3 to 5 short sentences. Strip away ONLY filler words, long narrative examples, and conversational redundant explanations. "
             "Output ONLY the paraphrased instruction text and absolutely nothing else. Do NOT include phrases like 'Here is the paraphrased version'."
         )
 
@@ -116,21 +121,27 @@ def run(args_list):
             reduced_text = output.outputs[0].text.strip()
             paraphrased_map[inst] = reduced_text
 
+        # We delete the LLM object to free up GPU VRAM as soon as generation is done
+        del llm
+        destroy_model_parallel()
+        gc.collect()
+        torch.cuda.empty_cache()
+
         print(f"\nSaving a log of the paraphrased instructions to 'paraphrased_instructions_log.json'...")
         log_data = []
         for inst in instructions_to_paraphrase:
+            reduced_inst = paraphrased_map[inst]
+            reduced_token_count = len(tokenizer.encode(reduced_inst, add_special_tokens=False))
             log_data.append({
                 "task_names": list(unique_instructions[inst]),
                 "original_instruction": inst,
-                "reduced_instruction": paraphrased_map[inst]
+                "original_token_count": original_token_counts[inst],
+                "reduced_instruction": reduced_inst,
+                "reduced_token_count": reduced_token_count
             })
         
         with open("paraphrased_instructions_log.json", "w", encoding="utf-8") as f:
             json.dump(log_data, f, indent=4)
-
-        # We delete the LLM object to free up GPU VRAM just in case it takes up too much memory during the map step
-        del llm
-        gc.collect()
 
     # Map the reduced instructions back to the main dataset
     print(f"\nMapping paraphrased instructions back to the main dataset rows...")
