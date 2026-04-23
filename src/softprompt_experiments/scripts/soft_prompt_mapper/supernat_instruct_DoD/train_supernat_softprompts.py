@@ -10,49 +10,6 @@ import pandas as pd
 from datasets import load_dataset
 from datasets import concatenate_datasets
 
-
-"""
-NOTES:
-1. There is variability in the number of instances (Input-output pairs) per task.
---- TRAIN SPLIT INSTANCES PER TASK STATS ---
-Total unique tasks: 756
-Min instances in a task: 29
-Max instances in a task: 82995
-Mean instances per task: 4068.23
-Median instances per task: 2972.50
-
---- TEST SPLIT INSTANCES PER TASK STATS ---
-Total unique tasks: 119
-Min instances in a task: 26
-Max instances in a task: 16897
-Mean instances per task: 4067.28
-Median instances per task: 2855.00
-
-2. There is variability in the length (tokens) of input - output sequences:
---- TRAIN SPLIT INPUT+OUTPUT LENGTH STATS ---
-Total instances analyzed: 3075585
-Min length: 2
-Max length: 222451
-Mean length: 143.68
-Median length: 47.00
-90th percentile: 337.00
-95th percentile: 566.00
-99th percentile: 1312.00
-
---- TEST SPLIT INPUT+OUTPUT LENGTH STATS ---
-Total instances analyzed: 484006
-Min length: 3
-Max length: 12092
-Mean length: 108.16
-Median length: 56.00
-90th percentile: 277.00
-95th percentile: 365.00
-99th percentile: 681.00
-
-3. We need to have tasks selected which have min 500 training instances and train only using those? TODO: Confirm this
-
-"""
-
 class TaskDataset(Dataset):
     def __init__(self, data_rows):
         """
@@ -156,10 +113,10 @@ def run(args_list):
     parser.add_argument("--min_delta", type=float, default=0.001)
     parser.add_argument("--num_tokens", type=int, default=50)
     parser.add_argument("--max_length", type=int, default=512)
-    parser.add_argument("--batch_size", type=int, default=2)
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=16)
-    parser.add_argument("--dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english")
-    parser.add_argument("--save_dir", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english")
+    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english-filtered")
+    parser.add_argument("--save_dir", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english-filtered")
+    parser.add_argument("--num_examples", type=int, default=500, help = "num of examples to use per task for training and eval of soft prompts")
     parser.add_argument("--seed", type=int, default=47)
     args, _ = parser.parse_known_args(args_list)
 
@@ -171,10 +128,11 @@ def run(args_list):
     NUM_TOKENS = args.num_tokens
     MAX_LENGTH = args.max_length
     BATCH_SIZE = args.batch_size
-    GRADIENT_ACCUMULATION_STEPS = args.gradient_accumulation_steps
     SAVE_DIR = args.save_dir
     PATIENCE = args.patience
     MIN_DELTA = args.min_delta
+    NUM_EXAMPLES = args.num_examples
+    SEED = args.seed
 
     # Create Directory to save all soft prompts for this Dataset
     os.makedirs(SAVE_DIR, exist_ok=True)
@@ -263,6 +221,14 @@ def run(args_list):
 
         # Fetch all rows for this task across the entire dataset
         task_df = grouped_tasks.get_group(task_name)
+
+        # Cap the task size if it exceeds our num_examples threshold
+        if len(task_df) > NUM_EXAMPLES:
+            # randomly sample from the task dataframe
+            task_df = task_df.sample(n=NUM_EXAMPLES, random_state=SEED)
+        
+        # Perform a 90/10 split on the input/output pairs
+        split_idx = int(len(task_df) * 0.9)
         
         # Perform a 90/10 split on the input/output pairs
         split_idx = int(len(task_df) * 0.9)
@@ -315,9 +281,10 @@ def run(args_list):
 
             # Set the soft prompt in training mode
             soft_prompt.train()
-            optimizer.zero_grad()
             
             for step, batch in enumerate(train_dataloader):
+                # Reset the gradients
+                optimizer.zero_grad()
                 
                 # Move inputs to DEVICE
                 input_ids = batch["input_ids"].to(DEVICE)                                       # (batch_size, seq_len)
@@ -347,17 +314,13 @@ def run(args_list):
                 )
                 
                 # Extract the loss
-                loss = outputs.loss / GRADIENT_ACCUMULATION_STEPS
+                loss = outputs.loss
 
-                # Accumulate Gradients
+                # Backpropagate and update weights
                 loss.backward()
-                
-                # Backpropagate losses after every GRADIENT_ACCUMULATION_STEPS
-                if ((step + 1) % GRADIENT_ACCUMULATION_STEPS == 0) or (step + 1 == len(train_dataloader)):
-                    optimizer.step()
-                    optimizer.zero_grad()
+                optimizer.step()
 
-                total_train_loss += (loss.item() * GRADIENT_ACCUMULATION_STEPS)
+                total_train_loss += loss.item()
 
                 # Free up memory explicitly
                 del outputs, loss, inputs_embeds, text_embeds, soft_prompt_embeds, soft_prompt_mask, full_attention_mask
