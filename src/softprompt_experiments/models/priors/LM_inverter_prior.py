@@ -100,7 +100,7 @@ class LM_inverter_prior(logit_priors.LogitPrior):
         # zero out ignored positions
         token_log_probs = token_log_probs.masked_fill(labels == -100, 0.0)
 
-        return token_log_probs #/ (labels!=-100).sum(-1)
+        return token_log_probs.sum(dim=-1) / (labels!=-100).sum(-1)
     def log_prob_q_of_z_prime_given_x_z(
             self,
             z_prime: torch.Tensor, 
@@ -113,6 +113,9 @@ class LM_inverter_prior(logit_priors.LogitPrior):
         """
         B = x_z.logits.shape[0]
 
+        # first logit to predict token after prompt
+        # last_logits_idxs = softprompt_len - 1
+        # first logit to predict the first label token
         last_logits_idxs = (labels_z_x_y != -100).float().argmax(dim=1) - 1
     
         last_logits = x_z.logits[torch.arange(B), last_logits_idxs]
@@ -125,8 +128,14 @@ class LM_inverter_prior(logit_priors.LogitPrior):
             labels=labels_z_prime
         )
         
+        # Method 1: actual
+        # HF logits are shifted left like [b^,c^,d^,next_token^]
         log_prob = self.log_prob_from_logits(outputs.logits, labels_z_prime)
         
+        # Method 2: lazy
+        # loss = outputs.loss
+        # num_tokens = (labels_z_prime != -100).sum()
+        # log_prob = -loss * num_tokens
         return log_prob
 
     def log_prob_p_of_z_prime(
@@ -142,9 +151,15 @@ class LM_inverter_prior(logit_priors.LogitPrior):
         outputs = self.base_model(
             inputs_embeds=embs_z_prime, 
             attention_mask=attn_mask_z_prime,
+            # labels=labels_z_prime
         )
+        # Method 1: actual
         log_prob = self.log_prob_from_logits(outputs.logits, labels_z_prime)
         
+        # Method 2: lazy
+        # loss = outputs.loss
+        # num_tokens = (labels_z_prime != -100).sum()
+        # log_prob = -loss * num_tokens
         return log_prob
     
     def log_p_of_y_given_x_z_prime(
@@ -167,7 +182,14 @@ class LM_inverter_prior(logit_priors.LogitPrior):
 
         #2) stick hard prompt z prime in there
         z_prime_x_y = torch.cat([embs_z_prime, embs_x_y], dim=1)
+        # print(f"attn_mask_z_x_y {attn_mask_z_x_y.shape}")
+        # print(f"attn_mask_z_x_y raw {attn_mask_z_x_y}")
+        # print(f"attn_mask_x_y {attn_mask_x_y.shape}")
+        # print(f"attn_mask_z_prime {attn_mask_z_prime.shape}")
+        # print(f"attn_mask_z_prime raw {attn_mask_z_prime}")
         attn_mask_z_prime_x_y = torch.cat([attn_mask_z_prime, attn_mask_x_y], dim=1)
+        # print(f"attn_mask_z_prime_x_y raw {attn_mask_z_prime_x_y.shape}")
+        # print(f"attn_mask_z_prime_x_y raw {attn_mask_z_prime_x_y}")
         labels_z_prime = torch.full(
             (labels_x_y.shape[0], embs_z_prime.shape[1]),
             -100,
@@ -176,12 +198,20 @@ class LM_inverter_prior(logit_priors.LogitPrior):
         )
         labels_z_prime_x_y = torch.cat([labels_z_prime, labels_x_y], dim=1)
 
+        # print(f"z_prime_x_y: {z_prime_x_y.shape}")
+        # print(f"attn_mask_z_prime_x_y: {attn_mask_z_prime_x_y.shape}")
         outputs = self.base_model(
             inputs_embeds=z_prime_x_y,
             attention_mask=attn_mask_z_prime_x_y,
             # labels=labels_z_prime_x_y
         )
+
+        # Method 1: actual
         log_prob = self.log_prob_from_logits(outputs.logits, labels_z_prime_x_y)
+        # Method 2: lazy
+        # loss = outputs.loss
+        # num_tokens = (labels_z_prime_x_y != -100).sum()
+        # log_prob = -loss * num_tokens
 
         return log_prob
     
@@ -250,10 +280,10 @@ class LM_inverter_prior(logit_priors.LogitPrior):
         """
 
         # Calc q(z'|x,z)
-        log_q_z_prime_x_z = self.log_prob_q_of_z_prime_given_x_z(z_primes, output, labels_z_x_y=labels, softprompt_len=S).sum(dim=-1)
+        log_q_z_prime_x_z = self.log_prob_q_of_z_prime_given_x_z(z_primes, output, labels_z_x_y=labels, softprompt_len=S)
 
         # Calc p(z')
-        log_p_z_prime = self.log_prob_p_of_z_prime(embs_z_prime, attn_mask_z_prime, labels_z_prime).sum(dim=-1)
+        log_p_z_prime = self.log_prob_p_of_z_prime(embs_z_prime, attn_mask_z_prime, labels_z_prime)
 
         # Calc p(y|x,z')
         log_p_y_x_z_prime = self.log_p_of_y_given_x_z_prime(
@@ -263,7 +293,7 @@ class LM_inverter_prior(logit_priors.LogitPrior):
             attn_mask_z_x_y,
             labels,
             S
-        ).sum(dim=-1)
+        )
 
         batch_info_for_logging = (
             f"\t-log p(y|x,z') mu: {- log_p_y_x_z_prime.mean().item():.3f}, var: {log_p_y_x_z_prime.var(unbiased=False).item():.3f}, best:{(-log_p_y_x_z_prime).min():.3f}\n"
@@ -346,6 +376,7 @@ class LM_inverter_prior(logit_priors.LogitPrior):
         # advantage = advantage / (advantage.std() + 1e-8)     
         # without using V(x)   
         advantage = (reward - reward.mean()) / (reward.std() + 1e-8)
+
         # recompute with CURRENT policy
         log_q_new = self.log_prob_q_of_z_prime_given_x_z(
             z_primes,
@@ -365,10 +396,10 @@ class LM_inverter_prior(logit_priors.LogitPrior):
         L_entropy = 0.02 * entropy
 
         print(
-            f"\tReward: {reward.mean()}\n"
-            f"\tAdvantage: {advantage}\n"
+            # f"\tReward: {reward.mean()}\n"
+            # f"\tAdvantage: {advantage.mean()}\n"
             f"\tL_clipped: {L_clipped}\n"
             f"\tL_entropy: {L_entropy}"
         )
 
-        return -(L_clipped - L_entropy)
+        return (L_clipped + L_entropy)

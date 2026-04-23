@@ -289,7 +289,7 @@ def run(args_list):
 
         final_train_loss = 0.0
         final_test_loss = 0.0
-        ACTOR_UPDATES_PER_ROLLOUT = 4
+        ACTOR_UPDATES_PER_ROLLOUT = 2
         CRITIC_UPDATES_PER_ROLLOUT = 8
         for epoch in range(EPOCHS):
 
@@ -376,7 +376,7 @@ def run(args_list):
                         baseline=value_pred
                     )
 
-                    loss = normal_loss - LAMBD * ppo_loss
+                    loss = normal_loss + LAMBD * ppo_loss
                     logger.info(
                         f"\tNormal loss: {normal_loss:.3f},\n"
                         f"\tPPO loss: {ppo_loss:.3f}"
