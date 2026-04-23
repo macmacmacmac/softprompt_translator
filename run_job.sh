@@ -1,14 +1,14 @@
 #!/bin/bash
 #SBATCH -N 1
 #SBATCH -n 8
-#SBATCH --mem=16g
-#SBATCH -J "InSPEcT"
-#SBATCH -p short
-#SBATCH -t 24:00:00
+#SBATCH --mem=32g
+#SBATCH -J "SuperNatEng"
+#SBATCH -p long
+#SBATCH -t 120:00:00
 #SBATCH --gres=gpu:1
 #SBATCH -C A100
-#SBATCH -o paraphrase.out
-#SBATCH -e paraphrase.out
+#SBATCH -o logs.out
+#SBATCH -e logs.out
 
 # -----------------------------
 # Load Required Modules
@@ -37,4 +37,4 @@ export PYTORCH_ALLOC_CONF=expandable_segments:True
 # -----------------------------
 # Run the Job (Example: Python Script / Module)
 # -----------------------------
-python -u -m run_experiment --scripts soft_prompt_mapper.paraphrase_supernat_instruct
+python -u -m run_experiment --scripts soft_prompt_mapper.train_supernat_softprompts

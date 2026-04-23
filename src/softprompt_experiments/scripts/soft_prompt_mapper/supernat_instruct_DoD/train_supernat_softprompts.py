@@ -1,6 +1,7 @@
 import os
 import argparse
 import torch
+import math
 from torch.utils.data import Dataset, DataLoader
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from softprompt_experiments.models.softprompt import SoftPrompt
@@ -9,6 +10,48 @@ import pandas as pd
 from datasets import load_dataset
 from datasets import concatenate_datasets
 
+
+"""
+NOTES:
+1. There is variability in the number of instances (Input-output pairs) per task.
+--- TRAIN SPLIT INSTANCES PER TASK STATS ---
+Total unique tasks: 756
+Min instances in a task: 29
+Max instances in a task: 82995
+Mean instances per task: 4068.23
+Median instances per task: 2972.50
+
+--- TEST SPLIT INSTANCES PER TASK STATS ---
+Total unique tasks: 119
+Min instances in a task: 26
+Max instances in a task: 16897
+Mean instances per task: 4067.28
+Median instances per task: 2855.00
+
+2. There is variability in the length (tokens) of input - output sequences:
+--- TRAIN SPLIT INPUT+OUTPUT LENGTH STATS ---
+Total instances analyzed: 3075585
+Min length: 2
+Max length: 222451
+Mean length: 143.68
+Median length: 47.00
+90th percentile: 337.00
+95th percentile: 566.00
+99th percentile: 1312.00
+
+--- TEST SPLIT INPUT+OUTPUT LENGTH STATS ---
+Total instances analyzed: 484006
+Min length: 3
+Max length: 12092
+Mean length: 108.16
+Median length: 56.00
+90th percentile: 277.00
+95th percentile: 365.00
+99th percentile: 681.00
+
+3. We need to have tasks selected which have min 500 training instances and train only using those? TODO: Confirm this
+
+"""
 
 class TaskDataset(Dataset):
     def __init__(self, data_rows):
@@ -41,9 +84,10 @@ class TaskDataset(Dataset):
     
 
 class CausalLMBatchCollator:
-    def __init__(self, tokenizer, soft_prompt_length=20):
+    def __init__(self, tokenizer, soft_prompt_length=20, max_length=512):
         self.tokenizer = tokenizer
         self.soft_prompt_length = soft_prompt_length
+        self.max_length = max_length
 
     def __call__(self, batch):
         inputs, targets = zip(*batch)
@@ -56,7 +100,7 @@ class CausalLMBatchCollator:
             full_texts, 
             padding=True, 
             truncation=True,
-            max_length=64, 
+            max_length=self.max_length, 
             return_tensors="pt",
             add_special_tokens=True
         )
@@ -107,11 +151,13 @@ def run(args_list):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--epochs", type=int, default=20)
-    parser.add_argument("--patience", type=int, default=5)
+    parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--patience", type=int, default=3)
     parser.add_argument("--min_delta", type=float, default=0.001)
     parser.add_argument("--num_tokens", type=int, default=50)
-    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--max_length", type=int, default=512)
+    parser.add_argument("--batch_size", type=int, default=2)
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=16)
     parser.add_argument("--dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english")
     parser.add_argument("--save_dir", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english")
     parser.add_argument("--seed", type=int, default=47)
@@ -123,7 +169,9 @@ def run(args_list):
     LR = args.lr
     EPOCHS = args.epochs
     NUM_TOKENS = args.num_tokens
+    MAX_LENGTH = args.max_length
     BATCH_SIZE = args.batch_size
+    GRADIENT_ACCUMULATION_STEPS = args.gradient_accumulation_steps
     SAVE_DIR = args.save_dir
     PATIENCE = args.patience
     MIN_DELTA = args.min_delta
@@ -157,7 +205,8 @@ def run(args_list):
     # Init Collator
     collator = CausalLMBatchCollator(
         tokenizer=llama_tokenizer,
-        soft_prompt_length=NUM_TOKENS
+        soft_prompt_length=NUM_TOKENS,
+        max_length=MAX_LENGTH
     )
 
     # Load HF Dataset
@@ -179,19 +228,19 @@ def run(args_list):
     # Init Dataset Progress Bar
     dataset_pbar = tqdm(unique_tasks, desc="Master Task Progress")
 
-    # Init file path for accuracy stats
-    ACCURACY_STATS_FILE_PATH = f"{SAVE_DIR}/accuracy_stats.csv"
+    # Init file path for training stats
+    TRAINING_STATS_FILE_PATH = f"{SAVE_DIR}/training_stats.csv"
 
-    # Preload existing accuracy_stats, if it exists already
-    if os.path.isfile(ACCURACY_STATS_FILE_PATH):
-        df = pd.read_csv(ACCURACY_STATS_FILE_PATH)
+    # Preload existing training_stats, if it exists already
+    if os.path.isfile(TRAINING_STATS_FILE_PATH):
+        df = pd.read_csv(TRAINING_STATS_FILE_PATH)
         training_stats = df.to_dict(orient='list')
     else:
         # Init a dict to save training stats
         training_stats = {
             'task_name': [],
-            'train_accuracy': [],
-            'val_accuracy': [],
+            'train_perplexity': [],
+            'val_perplexity': [],
             'avg_train_loss': [],
             'avg_val_loss': []
         }
@@ -256,23 +305,19 @@ def run(args_list):
         epochs_no_improve = 0
         best_soft_prompt_state = None
         best_val_loss = float('inf')
-        best_val_accuracy = 0
+        best_val_perplexity = float('inf')
         best_train_loss = float('inf')
-        best_train_accuracy = 0
+        best_train_perplexity = float('inf')
 
         # Loop EPOCHS times (or until Early Stopping triggers)
         for epoch in range(EPOCHS):
             total_train_loss = 0
-            train_correct_tokens = 0
-            train_total_tokens = 0
 
             # Set the soft prompt in training mode
             soft_prompt.train()
+            optimizer.zero_grad()
             
-            for batch in train_dataloader:
-
-                # Reset gradients
-                optimizer.zero_grad()
+            for step, batch in enumerate(train_dataloader):
                 
                 # Move inputs to DEVICE
                 input_ids = batch["input_ids"].to(DEVICE)                                       # (batch_size, seq_len)
@@ -302,40 +347,28 @@ def run(args_list):
                 )
                 
                 # Extract the loss
-                loss = outputs.loss
+                loss = outputs.loss / GRADIENT_ACCUMULATION_STEPS
 
-                # Backpropagate loss and update the parameters
+                # Accumulate Gradients
                 loss.backward()
-                optimizer.step()
+                
+                # Backpropagate losses after every GRADIENT_ACCUMULATION_STEPS
+                if ((step + 1) % GRADIENT_ACCUMULATION_STEPS == 0) or (step + 1 == len(train_dataloader)):
+                    optimizer.step()
+                    optimizer.zero_grad()
 
-                logits = outputs.logits
+                total_train_loss += (loss.item() * GRADIENT_ACCUMULATION_STEPS)
 
-                # Shift logits and labels so token i predicts i + 1
-                shifted_logits = logits[..., :-1, :].contiguous()
-                shifted_labels = labels[..., 1:].contiguous()
-
-                # Get the predicted token ids
-                preds = torch.argmax(shifted_logits, dim=-1)
-
-                # Create a mask to ignore the -100 padding tokens
-                valid_mask = (shifted_labels != -100)
-
-                # Count correct predictions
-                correct = (preds == shifted_labels) & valid_mask
-
-                # Accumulate numbers for Accuracy and Avg Loss calculation per Epoch
-                train_correct_tokens += correct.sum().item()
-                train_total_tokens += valid_mask.sum().item()        
-                total_train_loss += loss.item()
+                # Free up memory explicitly
+                del outputs, loss, inputs_embeds, text_embeds, soft_prompt_embeds, soft_prompt_mask, full_attention_mask
+                torch.cuda.empty_cache()
                 
             avg_train_loss = total_train_loss / len(train_dataloader)
-            train_accuracy = (train_correct_tokens / train_total_tokens) * 100 if train_total_tokens > 0 else 0
+            train_perplexity = math.exp(avg_train_loss) if avg_train_loss < 50 else float('inf')
 
             # Set soft_prompt in eval mode
             soft_prompt.eval()
             total_val_loss = 0
-            val_correct_tokens = 0
-            val_total_tokens = 0
 
             # Freeze all weights
             with torch.no_grad():
@@ -369,30 +402,16 @@ def run(args_list):
                     # Accumulate validation loss
                     total_val_loss += outputs.loss.item()
 
-                    # Calculate Validation Accuracy
-                    logits = outputs.logits
-                    shifted_logits = logits[..., :-1, :].contiguous()
-                    shifted_labels = labels[..., 1:].contiguous()
-
-                    # Get the predicted token ids
-                    preds = torch.argmax(shifted_logits, dim = -1)
-
-                    # Create a mask to ignore the -100 padding tokens
-                    valid_mask = (shifted_labels != -100)
-
-                    # Count correct predictions
-                    correct = (preds == shifted_labels) & valid_mask
-
-                    # Accumulate numbers for Accuracy and Avg Loss calculation
-                    val_correct_tokens += correct.sum().item()
-                    val_total_tokens += valid_mask.sum().item()
+                    # Free up memory explicitly
+                    del outputs, inputs_embeds, text_embeds, soft_prompt_embeds, soft_prompt_mask, full_attention_mask
+                    torch.cuda.empty_cache()
             
             avg_val_loss = total_val_loss / len(val_dataloader)
-            val_accuracy = (val_correct_tokens / val_total_tokens) * 100 if val_total_tokens > 0 else 0
+            val_perplexity = math.exp(avg_val_loss) if avg_val_loss < 50 else float('inf')
 
             tqdm.write(f"\nEpoch {epoch + 1} Summary:")
-            tqdm.write(f"Train -> Loss: {avg_train_loss: .4f} | Accuracy: {train_accuracy: .2f}%")
-            tqdm.write(f"Val   -> Loss: {avg_val_loss: .4f} | Accuracy: {val_accuracy: .2f}%")
+            tqdm.write(f"Train -> Loss: {avg_train_loss: .4f} | Perplexity: {train_perplexity: .4f}")
+            tqdm.write(f"Val   -> Loss: {avg_val_loss: .4f} | Perplexity: {val_perplexity: .4f}")
 
             # ┌───────────────────────────────────────────────┐
             # │               EARLY STOPPING LOGIC            │
@@ -400,9 +419,9 @@ def run(args_list):
             # Check if the current validation loss is better than our best so far
             if avg_val_loss < (best_val_loss - MIN_DELTA):
                 best_val_loss = avg_val_loss
-                best_val_accuracy = val_accuracy
+                best_val_perplexity = val_perplexity
                 best_train_loss = avg_train_loss
-                best_train_accuracy = train_accuracy
+                best_train_perplexity = train_perplexity
                 epochs_no_improve = 0
                 
                 # Save a copy of the best weights in memory
@@ -435,20 +454,20 @@ def run(args_list):
         # Check if current task_name exists:
         if task_name in training_stats['task_name']:
             idx = training_stats['task_name'].index(task_name)
-            training_stats['train_accuracy'][idx] = round(best_train_accuracy, 4)
-            training_stats['val_accuracy'][idx] = round(best_val_accuracy, 4)
+            training_stats['train_perplexity'][idx] = round(best_train_perplexity, 4)
+            training_stats['val_perplexity'][idx] = round(best_val_perplexity, 4)
             training_stats['avg_train_loss'][idx] = round(best_train_loss, 4)
             training_stats['avg_val_loss'][idx] = round(best_val_loss, 4)
         else:
             training_stats['task_name'].append(task_name)
-            training_stats['train_accuracy'].append(round(best_train_accuracy, 4))
-            training_stats['val_accuracy'].append(round(best_val_accuracy, 4))
+            training_stats['train_perplexity'].append(round(best_train_perplexity, 4))
+            training_stats['val_perplexity'].append(round(best_val_perplexity, 4))
             training_stats['avg_train_loss'].append(round(best_train_loss, 4))
             training_stats['avg_val_loss'].append(round(best_val_loss, 4))
 
         # Save the CSV file with training stats
         df = pd.DataFrame(training_stats)
-        df.to_csv(ACCURACY_STATS_FILE_PATH, index=False)
+        df.to_csv(TRAINING_STATS_FILE_PATH, index=False)
 
         # Free up some allocations
         del soft_prompt
