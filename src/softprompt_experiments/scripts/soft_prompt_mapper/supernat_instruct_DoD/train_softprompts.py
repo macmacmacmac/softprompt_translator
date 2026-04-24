@@ -1,7 +1,6 @@
 import os
 import argparse
 import torch
-import math
 from torch.utils.data import Dataset, DataLoader
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from softprompt_experiments.models.softprompt import SoftPrompt
@@ -9,6 +8,8 @@ from tqdm import tqdm
 import pandas as pd
 from datasets import load_dataset
 from datasets import concatenate_datasets
+import evaluate
+
 
 class TaskDataset(Dataset):
     def __init__(self, data_rows):
@@ -87,11 +88,23 @@ class CausalLMBatchCollator:
         batch_size = labels.size(0)
         soft_prompt_labels = torch.full((batch_size, self.soft_prompt_length), -100, dtype=torch.long)  # (batch_size, soft_prompt_len)
         labels = torch.cat([soft_prompt_labels, labels], dim=1)                                         # (batch_size, soft_prompt_len + seq_len)
+        
+        input_tokenized = self.tokenizer(
+            list(inputs),
+            padding=True,
+            truncation=True,
+            max_length=self.max_length,
+            return_tensors="pt",
+            add_special_tokens=True
+        )
 
         return {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
-            "labels": labels
+            "labels": labels,
+            "input_only_ids": input_tokenized["input_ids"],
+            "input_only_attention_mask": input_tokenized["attention_mask"],
+            "targets": list(targets)
         }
 
 
@@ -107,13 +120,13 @@ def run(args_list):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--patience", type=int, default=3)
     parser.add_argument("--min_delta", type=float, default=0.001)
-    parser.add_argument("--num_tokens", type=int, default=50)
+    parser.add_argument("--num_tokens", type=int, default=20)
     parser.add_argument("--max_length", type=int, default=512)
-    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english-filtered")
     parser.add_argument("--save_dir", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english-filtered")
     parser.add_argument("--num_examples", type=int, default=500, help = "num of examples to use per task for training and eval of soft prompts")
@@ -160,13 +173,6 @@ def run(args_list):
     # Get the Llama Model's Word Embedding Mappings
     llama_word_embeddings = llama_model.get_input_embeddings()
 
-    # Init Collator
-    collator = CausalLMBatchCollator(
-        tokenizer=llama_tokenizer,
-        soft_prompt_length=NUM_TOKENS,
-        max_length=MAX_LENGTH
-    )
-
     # Load HF Dataset
     print(f"Loading dataset from {DATASET_PATH}...")
     hf_ds = load_dataset(DATASET_PATH)
@@ -197,11 +203,13 @@ def run(args_list):
         # Init a dict to save training stats
         training_stats = {
             'task_name': [],
-            'train_perplexity': [],
-            'val_perplexity': [],
+            'val_rougeL': [],
             'avg_train_loss': [],
             'avg_val_loss': []
         }
+        
+    # Init ROUGE metric
+    rouge_metric = evaluate.load('rouge')
 
     # Loop over all tasks
     for task_name in dataset_pbar:
@@ -243,6 +251,16 @@ def run(args_list):
         train_dataset = TaskDataset(train_rows)
         val_dataset = TaskDataset(val_rows)
 
+        # Get task-specific max length dynamically from the dataframe (fallback to MAX_LENGTH if missing)
+        task_max_length = int(task_df['total_tokens'].max()) if 'total_tokens' in task_df.columns else MAX_LENGTH
+
+        # Init Collator
+        collator = CausalLMBatchCollator(
+            tokenizer=llama_tokenizer,
+            soft_prompt_length=NUM_TOKENS,
+            max_length=task_max_length
+        )
+
         # Init train/val dataloaders
         train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collator)
         val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collator)
@@ -265,15 +283,14 @@ def run(args_list):
         # ┌───────────────────────────────────────────────┐
         # │                 TRAINING LOOP                 │
         # └───────────────────────────────────────────────┘
-        tqdm.write(f"\n--- Starting training for Task {task_name} ---")
+        tqdm.write(f"\n--- Starting training for Task {task_name}, Max Tokens {task_max_length} ---")
 
         # Early Stopping Variables
         epochs_no_improve = 0
         best_soft_prompt_state = None
         best_val_loss = float('inf')
-        best_val_perplexity = float('inf')
+        best_val_rougeL = 0.0
         best_train_loss = float('inf')
-        best_train_perplexity = float('inf')
 
         # Loop EPOCHS times (or until Early Stopping triggers)
         for epoch in range(EPOCHS):
@@ -327,11 +344,13 @@ def run(args_list):
                 torch.cuda.empty_cache()
                 
             avg_train_loss = total_train_loss / len(train_dataloader)
-            train_perplexity = math.exp(avg_train_loss) if avg_train_loss < 50 else float('inf')
 
             # Set soft_prompt in eval mode
             soft_prompt.eval()
             total_val_loss = 0
+            
+            val_preds = []
+            val_targets = []
 
             # Freeze all weights
             with torch.no_grad():
@@ -341,19 +360,24 @@ def run(args_list):
                     input_ids = batch["input_ids"].to(DEVICE)                                       # (batch_size, seq_len)
                     attention_mask = batch["attention_mask"].to(DEVICE)                             # (batch_size, seq_len)
                     labels = batch["labels"].to(DEVICE)                                             # (batch_size, soft_prompt_len + seq_len)
+                    input_only_ids = batch["input_only_ids"].to(DEVICE)
+                    input_only_attention_mask = batch["input_only_attention_mask"].to(DEVICE)
 
                     # Get the text embeddings from Llama
                     text_embeds = llama_word_embeddings(input_ids).detach()
+                    input_only_text_embeds = llama_word_embeddings(input_only_ids).detach()
                     
                     # Get the continuous Soft Prompt embeddings and duplicate for the batch
                     soft_prompt_embeds = soft_prompt().expand(text_embeds.shape[0], -1, -1)         # (batch_size, soft_prompt_len, embed_dim)
                     
                     # Concatenate Embeddings: [Soft Prompt + Input Text]
                     inputs_embeds = torch.cat([soft_prompt_embeds, text_embeds], dim=1)             # (batch_size, soft_prompt_len + seq_len, embed_dim)
+                    input_only_inputs_embeds = torch.cat([soft_prompt_embeds, input_only_text_embeds], dim=1)
                     
                     # Concatenate Attention Masks: Add `1`s so Llama pays attention to the soft prompt
                     soft_prompt_mask = torch.ones((attention_mask.shape[0], NUM_TOKENS), dtype=attention_mask.dtype, device=DEVICE)     # (batch_size, soft_prompt_len)
                     full_attention_mask = torch.cat([soft_prompt_mask, attention_mask], dim=1)      # (batch_size, soft_prompt_len + seq_len)
+                    input_only_full_attention_mask = torch.cat([soft_prompt_mask, input_only_attention_mask], dim=1)
 
                     # Forward Pass
                     outputs = llama_model(
@@ -364,17 +388,34 @@ def run(args_list):
 
                     # Accumulate validation loss
                     total_val_loss += outputs.loss.item()
+                    
+                    # Generate Outputs for RougeL
+                    generated_ids = llama_model.generate(
+                        inputs_embeds=input_only_inputs_embeds,
+                        attention_mask=input_only_full_attention_mask,
+                        max_new_tokens=task_max_length,
+                        pad_token_id=llama_tokenizer.eos_token_id,
+                        eos_token_id=llama_tokenizer.eos_token_id
+                    )
+                    
+                    decoded_preds = llama_tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+                    val_preds.extend(decoded_preds)
+                    val_targets.extend(batch["targets"])
 
                     # Free up memory explicitly
                     del outputs, inputs_embeds, text_embeds, soft_prompt_embeds, soft_prompt_mask, full_attention_mask
+                    del input_only_inputs_embeds, input_only_text_embeds, input_only_full_attention_mask, generated_ids, input_ids, attention_mask, labels, input_only_ids, input_only_attention_mask
                     torch.cuda.empty_cache()
             
             avg_val_loss = total_val_loss / len(val_dataloader)
-            val_perplexity = math.exp(avg_val_loss) if avg_val_loss < 50 else float('inf')
+            
+            # compute rougeL
+            rouge_result = rouge_metric.compute(predictions=val_preds, references=val_targets)
+            val_rougeL = rouge_result['rougeL']
 
             tqdm.write(f"\nEpoch {epoch + 1} Summary:")
-            tqdm.write(f"Train -> Loss: {avg_train_loss: .4f} | Perplexity: {train_perplexity: .4f}")
-            tqdm.write(f"Val   -> Loss: {avg_val_loss: .4f} | Perplexity: {val_perplexity: .4f}")
+            tqdm.write(f"Train -> Loss: {avg_train_loss: .4f}")
+            tqdm.write(f"Val   -> Loss: {avg_val_loss: .4f} | RougeL: {val_rougeL: .4f}")
 
             # ┌───────────────────────────────────────────────┐
             # │               EARLY STOPPING LOGIC            │
@@ -382,9 +423,8 @@ def run(args_list):
             # Check if the current validation loss is better than our best so far
             if avg_val_loss < (best_val_loss - MIN_DELTA):
                 best_val_loss = avg_val_loss
-                best_val_perplexity = val_perplexity
+                best_val_rougeL = val_rougeL
                 best_train_loss = avg_train_loss
-                best_train_perplexity = train_perplexity
                 epochs_no_improve = 0
                 
                 # Save a copy of the best weights in memory
@@ -417,14 +457,12 @@ def run(args_list):
         # Check if current task_name exists:
         if task_name in training_stats['task_name']:
             idx = training_stats['task_name'].index(task_name)
-            training_stats['train_perplexity'][idx] = round(best_train_perplexity, 4)
-            training_stats['val_perplexity'][idx] = round(best_val_perplexity, 4)
+            training_stats['val_rougeL'][idx] = round(best_val_rougeL, 4)
             training_stats['avg_train_loss'][idx] = round(best_train_loss, 4)
             training_stats['avg_val_loss'][idx] = round(best_val_loss, 4)
         else:
             training_stats['task_name'].append(task_name)
-            training_stats['train_perplexity'].append(round(best_train_perplexity, 4))
-            training_stats['val_perplexity'].append(round(best_val_perplexity, 4))
+            training_stats['val_rougeL'].append(round(best_val_rougeL, 4))
             training_stats['avg_train_loss'].append(round(best_train_loss, 4))
             training_stats['avg_val_loss'].append(round(best_val_loss, 4))
 

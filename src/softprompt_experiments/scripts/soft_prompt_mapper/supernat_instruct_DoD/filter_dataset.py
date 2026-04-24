@@ -1,7 +1,7 @@
 import os
 import argparse
 from transformers import AutoTokenizer
-from datasets import load_dataset, Dataset
+from datasets import load_dataset
 import pandas as pd
 
 def run(args_list):
@@ -62,8 +62,7 @@ def run(args_list):
     # Filter the HF DatasetDict directly to retain existing splits
     final_hf_dataset = filtered_ds.filter(lambda x: x["task_name"] in valid_tasks, num_proc=8, desc="Filtering Valid Tasks")
     
-    # Remove the temporary 'total_tokens' column
-    final_hf_dataset = final_hf_dataset.remove_columns(["total_tokens"])
+    # We purposefully retain the 'total_tokens' column so we can use it dynamically during training
     
     total_instances = sum(len(final_hf_dataset[split]) for split in final_hf_dataset.keys())
     print(f"Final filtered dataset contains {total_instances} total instances preserving splits: {list(final_hf_dataset.keys())}")
