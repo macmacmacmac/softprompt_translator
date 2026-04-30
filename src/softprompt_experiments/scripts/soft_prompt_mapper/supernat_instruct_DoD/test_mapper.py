@@ -21,8 +21,8 @@ def run(args_list=None):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--val_dataset_path", type=str, default="./datasets/mapper_training_dataset/SUPER-NATURALINSTRUCTIONS-english-filtered_original_instructions/val_mapper_dataset.pt")
-    parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights/SUPER-NATURALINSTRUCTIONS-english-filtered")
-    parser.add_argument("--training_stats_path", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english-filtered/training_stats.csv")
+    parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights/SUPER-NATURALINSTRUCTIONS-english-filtered_original_instructions")
+    parser.add_argument("--training_stats_path", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english-filtered_original_instructions/training_stats.csv")
     parser.add_argument("--sample", action='store_true', help="Use a sample of val dataset instead of the full val dataset")
     parser.add_argument("--num_samples", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=16)
@@ -80,10 +80,16 @@ def run(args_list=None):
 
     print(f"Loading base model {MODEL_NAME}...")
     base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
+    llama_word_embeddings = model.get_base_model().get_input_embeddings()
 
     print(f"Loading LoRA adapters from {LORA_DIR}...")
     model = PeftModel.from_pretrained(base_model, LORA_DIR)
     model.eval()
+
+    with torch.no_grad():
+        SOFT_MARKER = llama_word_embeddings(tokenizer("<SOFT:>", add_special_tokens=False, return_tensors='pt').to(DEVICE)['input_ids']).detach()
+        HARD_MARKER = llama_word_embeddings(tokenizer("<HARD:>", add_special_tokens=False, return_tensors='pt').to(DEVICE)['input_ids']).detach()
+        INIT_MARKER = llama_word_embeddings(tokenizer("<INIT:>", add_special_tokens=False, return_tensors='pt').to(DEVICE)['input_ids']).detach()
 
     # ┌───────────────────────────────────────────────┐
     # │                 INFERENCE LOOP                │
@@ -106,12 +112,25 @@ def run(args_list=None):
             # Stack soft prompts: (batch_size, seq_len, embed_dim)
             soft_prompts = torch.stack([s["soft_prompt"] for s in batch_samples]).to(DEVICE, dtype=DTYPE)
             
-            # Create an attention mask for the batch: (batch_size, seq_len)
-            attention_mask = torch.ones(soft_prompts.shape[:2], dtype=torch.long, device=DEVICE)
+            # stack init embeddings
+            init = torch.stack([s["soft_prompt_init_embeddings"] for s in batch_samples]).to(DEVICE, dtype=DTYPE)
+
+            batchsize = soft_prompts.shape[0]
+            soft_marker = SOFT_MARKER.expand(batchsize, -1, -1)
+            hard_marker = HARD_MARKER.expand(batchsize, -1, -1)
+            init_marker = INIT_MARKER.expand(batchsize, -1, -1)
+
+            inputs_embeds = torch.cat([soft_marker, soft_prompts, hard_marker], dim=1)               # (batch_size, soft_prompt_len + seq_len, embed_dim)
+                
+            # get the sequence length of the prefix so we can use it to build attn_mask and labels
+            prefix_len = init_marker.shape[1] + init.shape[1] + soft_marker.shape[1] + soft_prompts.shape[1] + hard_marker.shape[1]
+            
+            # Concatenate Attention Masks (Add `1`s for the soft prompt so Llama Model pays attention to it)
+            attention_mask = torch.ones((batchsize, prefix_len), dtype=attention_mask.dtype, device=DEVICE)   # (batch_size, soft_prompt_len)
             
             # Generate the predicted tokens for the whole batch
             outputs = model.generate(
-                inputs_embeds=soft_prompts,
+                inputs_embeds=inputs_embeds,
                 attention_mask=attention_mask,
                 max_new_tokens=300,
                 do_sample=DO_SAMPLE,

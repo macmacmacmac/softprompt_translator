@@ -18,7 +18,7 @@ class MapperDataset(Dataset):
     def __getitem__(self, idx):
 
         # Return the (20, 4096) tensor and the target string
-        return self.data[idx]["soft_prompt"], self.data[idx]["hard_prompt"]
+        return self.data[idx]["soft_prompt"], self.data[idx]["hard_prompt"], self.data[idx]["soft_prompt_init_embeddings"]
 
 
 # Custom Data Collator for the Mapper Dataset
@@ -29,10 +29,11 @@ class MapperCollator:
 
     def __call__(self, batch):
         # Retrieve list of soft_prompts and hard_prompts (in that order)
-        soft_prompts, hard_prompts = zip(*batch)
+        soft_prompts, hard_prompts, softprompt_init = zip(*batch)
         
         # Stack the frozen soft prompts into a batch: (batch_size, soft_prompt_len, embed_dim)
         soft_prompts = torch.stack(soft_prompts)        # (batch_size, soft_prompt_len, embed_dim)
+        softprompt_init = torch.stack(softprompt_init)        # (batch_size, soft_prompt_len, embed_dim)
 
         # Explicitly append the EOS token so the model learns when to stop
         hard_prompts = [prompt + self.tokenizer.eos_token for prompt in hard_prompts]
@@ -58,7 +59,8 @@ class MapperCollator:
             "soft_prompts": soft_prompts,
             "input_ids": input_ids,
             "attention_mask": attention_mask,
-            "labels": labels
+            "labels": labels,
+            "init":softprompt_init
         }
 
 
@@ -171,9 +173,83 @@ def run(args_list=None):
         collate_fn=collator
     )
 
+    with torch.no_grad():
+        SOFT_MARKER = llama_word_embeddings(tokenizer("<SOFT:>", add_special_tokens=False, return_tensors='pt').to(DEVICE)['input_ids']).detach()
+        HARD_MARKER = llama_word_embeddings(tokenizer("<HARD:>", add_special_tokens=False, return_tensors='pt').to(DEVICE)['input_ids']).detach()
+        INIT_MARKER = llama_word_embeddings(tokenizer("<INIT:>", add_special_tokens=False, return_tensors='pt').to(DEVICE)['input_ids']).detach()
+
+    def soft_to_hard(
+        soft_prompts,
+        attention_mask,
+        labels,
+        init,
+        soft_marker,
+        hard_marker,
+        init_marker,
+        text_embeds,
+        batchsize,
+    ):
+        # build sequence 
+        # inputs_embeds = torch.cat([init_marker, init, soft_marker, soft_prompts, hard_marker, text_embeds], dim=1)               # (batch_size, soft_prompt_len + seq_len, embed_dim)
+        # prefix_len = init_marker.shape[1] + init.shape[1] + soft_marker.shape[1] + soft_prompts.shape[1] + hard_marker.shape[1]
+        inputs_embeds = torch.cat([soft_marker, soft_prompts, hard_marker, text_embeds], dim=1)               # (batch_size, soft_prompt_len + seq_len, embed_dim)
+        prefix_len = soft_marker.shape[1] + soft_prompts.shape[1] + hard_marker.shape[1]
+
+        # Concatenate Attention Masks (Add `1`s for the soft prompt so Llama Model pays attention to it)
+        soft_prompt_mask = torch.ones((batchsize, prefix_len), dtype=attention_mask.dtype, device=DEVICE)   # (batch_size, soft_prompt_len)
+        full_attention_mask = torch.cat([soft_prompt_mask, attention_mask], dim=1)           # (batch_size, soft_prompt_len + seq_len)
+        
+        # Concatenate Labels (-100s for the soft prompt so loss isn't calculated on it)
+        soft_prompt_labels = torch.full((batchsize, prefix_len), -100, dtype=labels.dtype, device=DEVICE)         # (batch_size, soft_prompt_len)
+        full_labels = torch.cat([soft_prompt_labels, labels], dim=1)                         # (batch_size, soft_prompt_len + seq_len)
+        
+        # Forward Pass
+        outputs = model(
+            inputs_embeds = inputs_embeds,
+            attention_mask = full_attention_mask,
+            labels = full_labels
+        )
+
+        soft_to_hard_loss = outputs.loss
+
+        #========================= rouge L eval ================================
+        # TEACHER FORCING
+        # Soft to hard ROUGE-L
+        # Extract the logits
+        logits = outputs.logits
+
+        # Shift logits and labels so token i predicts i + 1
+        shifted_logits = logits[..., :-1, :].contiguous()
+        shifted_labels = full_labels[..., 1:].contiguous()
+
+        # Get the predicted token ids
+        preds = torch.argmax(shifted_logits, dim = -1)
+
+        # Replace -100 in the labels as we can't decode -100
+        shifted_labels = torch.where(
+            shifted_labels != -100, 
+            shifted_labels, 
+            tokenizer.pad_token_id
+        )
+
+        # Decode preds and labels into strings
+        # skip_special_tokens=True removes EOS and Padding tokens from the text
+        decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
+        decoded_labels = tokenizer.batch_decode(shifted_labels, skip_special_tokens=True)
+
+        # Calculate ROUGE-L for the current batch
+        rouge_results = ROUGE_METRIC.compute(
+            predictions=decoded_preds, 
+            references=decoded_labels, 
+            use_stemmer=True
+        )
+        
+        return soft_to_hard_loss, rouge_results
+
     # ┌───────────────────────────────────────────────┐
     # │                 TRAINING LOOP                 │
     # └───────────────────────────────────────────────┘
+
     # Loop EPOCHS times
     for epoch in range(EPOCHS):
 
@@ -195,66 +271,36 @@ def run(args_list=None):
             input_ids = batch["input_ids"].to(DEVICE)                                   # (batch_size, seq_len)
             attention_mask = batch["attention_mask"].to(DEVICE)                         # (batch_size, seq_len)
             labels = batch["labels"].to(DEVICE)                                         # (batch_size, seq_len)
+            init = batch["init"].to(DEVICE)
             
             # Get embeddings for the discrete text
             with torch.no_grad():
                 text_embeds = llama_word_embeddings(input_ids).detach()                 # (batch_size, seq_len, embed_dim)
             
-            # Concatenate Embeddings: [Continuous Soft Prompt + Discrete Hard Prompt]
-            inputs_embeds = torch.cat([soft_prompts, text_embeds], dim=1)               # (batch_size, soft_prompt_len + seq_len, embed_dim)
-            
-            # Concatenate Attention Masks (Add `1`s for the soft prompt so Llama Model pays attention to it)
-            soft_prompt_mask = torch.ones((soft_prompts.shape[0], NUM_TOKENS), dtype=attention_mask.dtype, device=DEVICE)   # (batch_size, soft_prompt_len)
-            full_attention_mask = torch.cat([soft_prompt_mask, attention_mask], dim=1)           # (batch_size, soft_prompt_len + seq_len)
-            
-            # Concatenate Labels (-100s for the soft prompt so loss isn't calculated on it)
-            soft_prompt_labels = torch.full((labels.shape[0], NUM_TOKENS), -100, dtype=labels.dtype, device=DEVICE)         # (batch_size, soft_prompt_len)
-            full_labels = torch.cat([soft_prompt_labels, labels], dim=1)                         # (batch_size, soft_prompt_len + seq_len)
-            
-            # Forward Pass
-            outputs = model(
-                inputs_embeds = inputs_embeds,
-                attention_mask = full_attention_mask,
-                labels = full_labels
+            batchsize = soft_prompts.shape[0]
+            soft_marker = SOFT_MARKER.expand(batchsize, -1, -1)
+            hard_marker = HARD_MARKER.expand(batchsize, -1, -1)
+            init_marker = INIT_MARKER.expand(batchsize, -1, -1)
+
+            soft_to_hard_loss, rouge_results = soft_to_hard(
+                soft_prompts,
+                attention_mask,
+                labels,
+                init,
+                soft_marker,
+                hard_marker,
+                init_marker,
+                text_embeds,
+                batchsize,
             )
             
             # Extract the CE Loss
-            loss = outputs.loss
+            loss = soft_to_hard_loss
 
             # Backpropagate Loss and Update the Parameters
             loss.backward()
             optimizer.step()
 
-            # TEACHER FORCING
-            # Extract the logits
-            logits = outputs.logits
-
-            # Shift logits and labels so token i predicts i + 1
-            shifted_logits = logits[..., :-1, :].contiguous()
-            shifted_labels = full_labels[..., 1:].contiguous()
-
-            # Get the predicted token ids
-            preds = torch.argmax(shifted_logits, dim = -1)
-
-            # Replace -100 in the labels as we can't decode -100
-            shifted_labels = torch.where(
-                shifted_labels != -100, 
-                shifted_labels, 
-                tokenizer.pad_token_id
-            )
-
-            # Decode preds and labels into strings
-            # skip_special_tokens=True removes EOS and Padding tokens from the text
-            decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
-            decoded_labels = tokenizer.batch_decode(shifted_labels, skip_special_tokens=True)
-
-            # Calculate ROUGE-L for the current batch
-            rouge_results = ROUGE_METRIC.compute(
-                predictions=decoded_preds, 
-                references=decoded_labels, 
-                use_stemmer=True
-            )
-            
             # Accumulate metrics (initialize `total_train_rouge_l = 0` before the epoch instead of tokens)
             current_rouge_l = rouge_results['rougeL']
             total_train_rouge_l += current_rouge_l
@@ -287,54 +333,30 @@ def run(args_list=None):
                 # Get the text embeddings from Llama for the soft prompt token ids
                 text_embeds = llama_word_embeddings(input_ids).detach()                 # (batch_size, seq_len, embed_dim)
 
-                # Concatenate Embeddings: [Soft Prompt + Input Text]
-                inputs_embeds = torch.cat([soft_prompts, text_embeds], dim=1)           # (batch_size, soft_prompt_len + seq_len, embed_dim)
-                
-                # Concatenate Attention Masks: Add `1`s so Llama pays attention to the soft prompt
-                soft_prompt_mask = torch.ones((soft_prompts.shape[0], NUM_TOKENS), dtype=attention_mask.dtype, device=DEVICE)   # (batch_size, soft_prompt_len)
-                full_attention_mask = torch.cat([soft_prompt_mask, attention_mask], dim=1)  # (batch_size, soft_prompt_len + seq_len)
-                
-                # Concatenate Labels (-100s for the soft prompt so loss isn't calculated on it)
-                soft_prompt_labels = torch.full((labels.shape[0], NUM_TOKENS), -100, dtype=labels.dtype, device=DEVICE)         # (batch_size, soft_prompt_len)
-                full_labels = torch.cat([soft_prompt_labels, labels], dim=1)                # (batch_size, soft_prompt_len + seq_len)
-                
-                # Forward Pass
-                outputs = model(
-                    inputs_embeds = inputs_embeds,
-                    attention_mask = full_attention_mask,
-                    labels = full_labels
-                )
+                # "<SOFT:>" + softprompt + "<HARD>:" + hardprompt
+                batchsize = soft_prompts.shape[0]
+                soft_marker = SOFT_MARKER.expand(batchsize, -1, -1)
+                hard_marker = HARD_MARKER.expand(batchsize, -1, -1)
+                init_marker = INIT_MARKER.expand(batchsize, -1, -1)
 
+                soft_to_hard_loss, rouge_results = soft_to_hard(
+                    soft_prompts,
+                    attention_mask,
+                    labels,
+                    init,
+                    soft_marker,
+                    hard_marker,
+                    init_marker,
+                    text_embeds,
+                    batchsize,
+                )
+                
+                # Extract the CE Loss
+                loss = soft_to_hard_loss                
+                
                 # Accumulate validation loss
-                total_val_loss += outputs.loss.item()
+                total_val_loss += soft_to_hard_loss.item()
 
-                # Calculate Validation Accuracy
-                logits = outputs.logits
-                shifted_logits = logits[..., :-1, :].contiguous()
-                shifted_labels = full_labels[..., 1:].contiguous()
-
-                # Get the predicted token ids
-                preds = torch.argmax(shifted_logits, dim = -1)
-
-                # Replace -100 in the labels as we can't decode -100
-                shifted_labels = torch.where(
-                    shifted_labels != -100, 
-                    shifted_labels, 
-                    tokenizer.pad_token_id
-                )
-
-                # Decode preds and labels into strings
-                # skip_special_tokens=True removes EOS and Padding tokens from the text
-                decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
-                decoded_labels = tokenizer.batch_decode(shifted_labels, skip_special_tokens=True)
-
-                # Calculate ROUGE-L for the current batch
-                rouge_results = ROUGE_METRIC.compute(
-                    predictions=decoded_preds, 
-                    references=decoded_labels, 
-                    use_stemmer=True
-                )
-                
                 # Accumulate metrics (initialize `total_train_rouge_l = 0` before the epoch instead of tokens)
                 current_rouge_l = rouge_results['rougeL']
                 total_val_rouge_l += current_rouge_l
