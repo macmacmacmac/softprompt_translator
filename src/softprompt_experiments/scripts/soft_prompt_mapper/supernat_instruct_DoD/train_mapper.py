@@ -76,7 +76,7 @@ def run(args_list=None):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--epochs", type=int, default=5)
+    parser.add_argument("--epochs", type=int, default=6)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--num_tokens", type=int, default=20)
     parser.add_argument("--mapper_dataset_path", type=str, default="./datasets/mapper_training_dataset/SUPER-NATURALINSTRUCTIONS-english-filtered_original_instructions")
@@ -189,11 +189,17 @@ def run(args_list=None):
         text_embeds,
         batchsize,
     ):
-        # build sequence 
-        # inputs_embeds = torch.cat([init_marker, init, soft_marker, soft_prompts, hard_marker, text_embeds], dim=1)               # (batch_size, soft_prompt_len + seq_len, embed_dim)
-        # prefix_len = init_marker.shape[1] + init.shape[1] + soft_marker.shape[1] + soft_prompts.shape[1] + hard_marker.shape[1]
-        inputs_embeds = torch.cat([soft_marker, soft_prompts, hard_marker, text_embeds], dim=1)               # (batch_size, soft_prompt_len + seq_len, embed_dim)
-        prefix_len = soft_marker.shape[1] + soft_prompts.shape[1] + hard_marker.shape[1]
+        """
+            Computes -log p(hard|soft)
+            Input sequence looks like
+        """
+        # build sequence (init + soft + hard)
+        inputs_embeds = torch.cat([init_marker, init, soft_marker, soft_prompts, hard_marker, text_embeds], dim=1)               # (batch_size, soft_prompt_len + seq_len, embed_dim)
+        prefix_len = init_marker.shape[1] + init.shape[1] + soft_marker.shape[1] + soft_prompts.shape[1] + hard_marker.shape[1]
+
+        # build sequence (soft + hard)
+        # inputs_embeds = torch.cat([soft_marker, soft_prompts, hard_marker, text_embeds], dim=1)               # (batch_size, soft_prompt_len + seq_len, embed_dim)
+        # prefix_len = soft_marker.shape[1] + soft_prompts.shape[1] + hard_marker.shape[1]
 
         # Concatenate Attention Masks (Add `1`s for the soft prompt so Llama Model pays attention to it)
         soft_prompt_mask = torch.ones((batchsize, prefix_len), dtype=attention_mask.dtype, device=DEVICE)   # (batch_size, soft_prompt_len)
@@ -246,6 +252,49 @@ def run(args_list=None):
         
         return soft_to_hard_loss, rouge_results
 
+    def hard_to_soft(
+        soft_prompts,
+        attention_mask,
+        labels,
+        init,
+        soft_marker,
+        hard_marker,
+        init_marker,
+        text_embeds,
+        batchsize,
+    ):
+        # build sequence (init + hard + soft)
+        inputs_embeds = torch.cat([init_marker, init, hard_marker, text_embeds, soft_marker, soft_prompts], dim=1)               # (batch_size, soft_prompt_len + seq_len, embed_dim)
+        prefix_len = init_marker.shape[1] + init.shape[1] + hard_marker.shape[1] + soft_marker.shape[1]
+        
+        # build sequence (hard + soft)
+        # inputs_embeds = torch.cat([hard_marker, text_embeds, soft_marker, soft_prompts], dim=1)               # (batch_size, soft_prompt_len + seq_len, embed_dim)
+        # prefix_len = hard_marker.shape[1] + soft_marker.shape[1]
+
+        soft_len = soft_prompts.shape[1]
+
+        # Concatenate Attention Masks (Add `1`s for the soft prompt so Llama Model pays attention to it)
+        prefix_mask = torch.ones((batchsize, prefix_len), dtype=attention_mask.dtype, device=DEVICE)  
+        softprompt_mask = torch.ones((batchsize, soft_len), dtype=attention_mask.dtype, device=DEVICE)   
+        full_attention_mask = torch.cat([prefix_mask, attention_mask, softprompt_mask], dim=1)           
+             
+        # Forward Pass
+        outputs = model(
+            inputs_embeds=inputs_embeds,
+            attention_mask=full_attention_mask,
+            output_hidden_states=True
+        ).hidden_states[-1]  # (B, T, D)
+
+        # predictions (shifted left)
+        pred = outputs[:, :-1, :]              # (B, T-1, D)
+
+        # take only positions that predict soft prompt
+        pred_soft = pred[:, -soft_len:, :]     # (B, k, D)
+        hard_to_soft_loss = torch.mean((soft_prompts - pred_soft)**2)
+
+        
+        return hard_to_soft_loss
+
     # ┌───────────────────────────────────────────────┐
     # │                 TRAINING LOOP                 │
     # └───────────────────────────────────────────────┘
@@ -293,9 +342,21 @@ def run(args_list=None):
                 text_embeds,
                 batchsize,
             )
-            
-            # Extract the CE Loss
             loss = soft_to_hard_loss
+
+            if epoch < (EPOCHS//2):
+                hard_to_soft_loss = hard_to_soft(
+                    soft_prompts,
+                    attention_mask,
+                    labels,
+                    init,
+                    soft_marker,
+                    hard_marker,
+                    init_marker,
+                    text_embeds,
+                    batchsize,
+                )
+                loss += 0.5*hard_to_soft_loss
 
             # Backpropagate Loss and Update the Parameters
             loss.backward()
@@ -307,7 +368,7 @@ def run(args_list=None):
             total_train_loss += loss.item()
             
             # Update progress bar
-            dataset_pbar.set_postfix({"Loss": f"{loss.item():.4f}"})
+            dataset_pbar.set_postfix({"Loss": f"{loss.item():.4f} (soft to hard): {soft_to_hard_loss} (hard to soft): {hard_to_soft_loss}"})
 
             
         avg_train_loss = total_train_loss / len(train_dataloader)
@@ -325,10 +386,11 @@ def run(args_list=None):
             for batch in tqdm(val_dataloader, desc=f"Epoch {epoch+1}/{EPOCHS} [Val]"):
 
                 # Move inputs to DEVICE
-                soft_prompts = batch["soft_prompts"].to(DEVICE, dtype=DTYPE)            # (batch_size, soft_prompt_len, embed_dim)
-                input_ids = batch["input_ids"].to(DEVICE)                               # (batch_size, seq_len)
-                attention_mask = batch["attention_mask"].to(DEVICE)                     # (batch_size, seq_len)
-                labels = batch["labels"].to(DEVICE)                                     # (batch_size, seq_len)
+                soft_prompts = batch["soft_prompts"].to(DEVICE, dtype=DTYPE)                # (batch_size, soft_prompt_len, embed_dim)
+                input_ids = batch["input_ids"].to(DEVICE)                                   # (batch_size, seq_len)
+                attention_mask = batch["attention_mask"].to(DEVICE)                         # (batch_size, seq_len)
+                labels = batch["labels"].to(DEVICE)                                         # (batch_size, seq_len)
+                init = batch["init"].to(DEVICE)
                 
                 # Get the text embeddings from Llama for the soft prompt token ids
                 text_embeds = llama_word_embeddings(input_ids).detach()                 # (batch_size, seq_len, embed_dim)
@@ -350,9 +412,21 @@ def run(args_list=None):
                     text_embeds,
                     batchsize,
                 )
-                
-                # Extract the CE Loss
-                loss = soft_to_hard_loss                
+                loss = soft_to_hard_loss
+
+                # if epoch < (EPOCHS//2):
+                # hard_to_soft_loss = hard_to_soft(
+                #     soft_prompts,
+                #     attention_mask,
+                #     labels,
+                #     init,
+                #     soft_marker,
+                #     hard_marker,
+                #     init_marker,
+                #     text_embeds,
+                #     batchsize,
+                # )
+                # loss += hard_to_soft_loss
                 
                 # Accumulate validation loss
                 total_val_loss += soft_to_hard_loss.item()
