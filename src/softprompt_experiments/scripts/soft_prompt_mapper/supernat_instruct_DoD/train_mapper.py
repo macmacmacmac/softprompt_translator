@@ -478,8 +478,10 @@ def run(args_list=None):
     # │                 TRAINING LOOP                 │
     # └───────────────────────────────────────────────┘
 
+    # Phase configs, set me to 0 and 0 for vanilla one way only training for comparison
     NUM_EPOCHS_TO_PRETRAIN = 1
-    NUM_EPOCHS_TO_BACKTRANSLATE = 1
+    NUM_EPOCHS_TO_BACKTRANSLATE = 2
+
     # Loop EPOCHS times
     # ==================================================
     # | The training pipeline is broken up into 3 phases
@@ -551,7 +553,18 @@ def run(args_list=None):
                 soft_to_hard_loss, rouge_results = soft_to_hard(**kwargs)
                 hard_to_soft_loss = hard_to_soft(**kwargs)
                 loss = soft_to_hard_loss + hard_to_soft_loss
+                
+                # Logging
+                current_rouge_l = rouge_results['rougeL']
+                total_train_rouge_l += current_rouge_l
+                total_train_soft_to_hard_loss += soft_to_hard_loss.item()
+                total_train_hard_to_soft_loss += hard_to_soft_loss.item()
 
+                batch_log = {
+                    "PHASE 1 Loss": f"{loss.item():.2f}",
+                    "S->H": f"{soft_to_hard_loss:.2f}",
+                    "H->S": f"{hard_to_soft_loss:.2f}",
+                }
             # ========================================
             # PHASE 2: Backtranslation
             # |--- After we get a decent-ish bidirectional mapper, we use that to sample new sequences
@@ -601,7 +614,20 @@ def run(args_list=None):
                 hard_to_soft_loss = hard_to_soft(**kwargs)
 
                 loss = soft_to_hard_loss + hard_to_soft_loss + bt_soft_to_hard_loss + bt_hard_to_soft_loss
-            
+
+                # Logging
+                current_rouge_l = rouge_results['rougeL']
+                total_train_rouge_l += current_rouge_l
+                total_train_soft_to_hard_loss += soft_to_hard_loss.item()
+                total_train_hard_to_soft_loss += hard_to_soft_loss.item()
+
+                batch_log = {
+                    "PHASE 2 Loss": f"{loss.item():.2f}",
+                    "S->H": f"{soft_to_hard_loss:.2f}",
+                    "H->S": f"{hard_to_soft_loss:.2f}",
+                    "S->H (BT)": f"{bt_soft_to_hard_loss:.2f}",
+                    "H->S (BT)": f"{bt_hard_to_soft_loss:.2f}",
+                }
             # ========================================
             # PHASE 2: Finetune
             # |--- Finetunes it on the actual objective
@@ -610,26 +636,25 @@ def run(args_list=None):
             else:
                 # Just one way map now
                 soft_to_hard_loss, rouge_results = soft_to_hard(**kwargs)
-                loss = soft_to_hard_loss + hard_to_soft_loss
+                loss = soft_to_hard_loss
+
+                current_rouge_l = rouge_results['rougeL']
+                total_train_rouge_l += current_rouge_l
+                total_train_soft_to_hard_loss += soft_to_hard_loss.item()
+
+                # Logging
+                batch_log = {
+                    "PHASE 3 Loss": f"{loss.item():.2f}",
+                    "S->H": f"{soft_to_hard_loss:.2f}",
+                }
+
                 
             # Backpropagate Loss and Update the Parameters
             loss.backward()
             optimizer.step()
-
-            # Accumulate metrics (initialize `total_train_rouge_l = 0` before the epoch instead of tokens)
-            current_rouge_l = rouge_results['rougeL']
-            total_train_rouge_l += current_rouge_l
-            total_train_soft_to_hard_loss += soft_to_hard_loss.item()
-            total_train_hard_to_soft_loss += hard_to_soft_loss.item()
             
             # Update progress bar
-            dataset_pbar.set_postfix({
-                "Loss": f"{loss.item():.2f}",
-                "S->H": f"{soft_to_hard_loss:.2f}",
-                "H->S": f"{hard_to_soft_loss:.2f}",
-                "S->H (BT)": f"{bt_soft_to_hard_loss:.2f}",
-                "H->S (BT)": f"{bt_hard_to_soft_loss:.2f}",
-            })
+            dataset_pbar.set_postfix(batch_log)
 
             
         avg_train_soft_to_hard_loss = total_train_soft_to_hard_loss / len(train_dataloader)
