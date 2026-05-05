@@ -80,7 +80,7 @@ def run(args_list=None):
 
     print(f"Loading base model {MODEL_NAME}...")
     base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
-    llama_word_embeddings = model.get_base_model().get_input_embeddings()
+    llama_word_embeddings = base_model.get_input_embeddings()
 
     print(f"Loading LoRA adapters from {LORA_DIR}...")
     model = PeftModel.from_pretrained(base_model, LORA_DIR)
@@ -120,13 +120,16 @@ def run(args_list=None):
             hard_marker = HARD_MARKER.expand(batchsize, -1, -1)
             init_marker = INIT_MARKER.expand(batchsize, -1, -1)
 
-            inputs_embeds = torch.cat([soft_marker, soft_prompts, hard_marker], dim=1)               # (batch_size, soft_prompt_len + seq_len, embed_dim)
-                
-            # get the sequence length of the prefix so we can use it to build attn_mask and labels
+            # build input sequence (init + soft)
+            inputs_embeds = torch.cat([init_marker, init, soft_marker, soft_prompts, hard_marker], dim=1)               # (batch_size, soft_prompt_len + seq_len, embed_dim)
             prefix_len = init_marker.shape[1] + init.shape[1] + soft_marker.shape[1] + soft_prompts.shape[1] + hard_marker.shape[1]
             
+            # build input sequence (soft)
+            # inputs_embeds = torch.cat([soft_marker, soft_prompts, hard_marker], dim=1)               # (batch_size, soft_prompt_len + seq_len, embed_dim)
+            # prefix_len = soft_marker.shape[1] + soft_prompts.shape[1] + hard_marker.shape[1]
+
             # Concatenate Attention Masks (Add `1`s for the soft prompt so Llama Model pays attention to it)
-            attention_mask = torch.ones((batchsize, prefix_len), dtype=attention_mask.dtype, device=DEVICE)   # (batch_size, soft_prompt_len)
+            attention_mask = torch.ones((batchsize, prefix_len), dtype=DTYPE, device=DEVICE)   # (batch_size, soft_prompt_len)
             
             # Generate the predicted tokens for the whole batch
             outputs = model.generate(
