@@ -46,11 +46,15 @@ def compile_data_list(dataset_records: List[Dict[str, Any]],
             # Extract the prompt embeddings. 
             # The SoftPrompt class saves it as shape (1, num_tokens, embed_dim).
             soft_prompt_tensor = state_dict['prompt_embeddings'].squeeze(0)         # (num_tokens, embed_dim)
+
+            # Extract the prompt initial_embeddings
+            soft_prompt_init_embeddings = state_dict['initial_embeddings'].squeeze(0)  # (num_token, embed_dim)
         
         # Accumulate Dataset ID, Soft Prompt Tensor, and the Hard Prompt Tensor into the list of compiled data
         compiled_data.append({
             "task_name": task_name,
             "soft_prompt": soft_prompt_tensor,
+            "soft_prompt_init_embeddings": soft_prompt_init_embeddings,
             "hard_prompt": hard_prompt,
             "instances": instances
         })
@@ -77,6 +81,7 @@ def run(args_list):
     parser.add_argument("--dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english-filtered")
     parser.add_argument("--trained_soft_prompts_dir", type=str, default="./trained_soft_prompts")
     parser.add_argument("--compiled_dataset_dir", type=str, default="./datasets/mapper_training_dataset")
+    parser.add_argument("--num_instances", type=int, default=10)
     parser.add_argument("--seed", type=int, default=47)
     args, _ = parser.parse_known_args(args_list)
 
@@ -84,6 +89,7 @@ def run(args_list):
     DATASET_PATH = args.dataset_path
     TRAINED_SOFT_PROMPTS_DIR = args.trained_soft_prompts_dir
     COMPILED_DATASET_DIR = args.compiled_dataset_dir
+    NUM_INSTANCES = args.num_instances
     SEED = args.seed
 
     # Determine Dataset Name
@@ -104,8 +110,8 @@ def run(args_list):
     # train_dataset_df = train_dataset_df.groupby(['task_name', 'reduced_instructions']).head(3).reset_index(drop=True)
     # test_dataset_df = test_dataset_df.groupby(['task_name', 'reduced_instructions']).head(3).reset_index(drop=True)
 
-    train_dataset_df = train_dataset_df.groupby(['task_name', 'instruction']).head(3).reset_index(drop=True)
-    test_dataset_df = test_dataset_df.groupby(['task_name', 'instruction']).head(3).reset_index(drop=True)
+    train_dataset_df = train_dataset_df.groupby(['task_name', 'instruction']).head(NUM_INSTANCES).reset_index(drop=True)
+    test_dataset_df = test_dataset_df.groupby(['task_name', 'instruction']).head(NUM_INSTANCES).reset_index(drop=True)
 
     # NOW: Group them back together and fold the input/output pairs into an 'instances' column
     # train_dataset_df = train_dataset_df.groupby(['task_name', 'reduced_instructions']).apply(
