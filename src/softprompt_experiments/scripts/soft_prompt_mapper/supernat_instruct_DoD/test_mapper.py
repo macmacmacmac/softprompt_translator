@@ -20,10 +20,16 @@ def run(args_list=None):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
+<<<<<<< HEAD
     parser.add_argument("--proportion_to_use", type=float, default=1.0)
     parser.add_argument("--mapper_dataset_path", type=str, default="./datasets/mapper_training_dataset/supnat_eng_fil_orig/")
     # parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights/supnat_eng_fil_orig")
     # parser.add_argument("--training_stats_path", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english-filtered_original_instructions/training_stats.csv")
+=======
+    parser.add_argument("--val_dataset_path", type=str, default="./datasets/mapper_training_dataset/SUPER-NATURALINSTRUCTIONS-english-filtered_original_instructions/val_mapper_dataset.pt")
+    parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights/SUPER-NATURALINSTRUCTIONS-english-filtered_original_instructions")
+    parser.add_argument("--training_stats_path", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english-filtered/training_stats.csv")
+>>>>>>> b5bdc9c0966843a111c3e8d93f2e38cf8fca06a8
     parser.add_argument("--sample", action='store_true', help="Use a sample of val dataset instead of the full val dataset")
     parser.add_argument("--num_samples", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=16)

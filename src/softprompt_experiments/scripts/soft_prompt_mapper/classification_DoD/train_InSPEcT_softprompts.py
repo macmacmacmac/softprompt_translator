@@ -1,6 +1,5 @@
 import os
 import argparse
-import sqlite3
 import torch
 from torch.utils.data import Dataset, DataLoader
 from transformers import AutoTokenizer, AutoModelForCausalLM

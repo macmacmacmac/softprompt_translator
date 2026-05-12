@@ -15,13 +15,15 @@ def run(args_list):
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english-filtered")
+    parser.add_argument("--new_dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english-filtered-100x-augmented")
     parser.add_argument("--teacher_model", type=str, default="mistralai/Mistral-Small-3.1-24B-Instruct-2503")
     parser.add_argument("--tokenizer_model", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
-    parser.add_argument("--num_paraphrasals", type=int, default=10, help="Number of paraphrasals to generate per instruction")
+    parser.add_argument("--num_paraphrasals", type=int, default=100, help="Number of paraphrasals to generate per instruction")
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all arguments into Global Variables
     DATASET_PATH = args.dataset_path
+    NEW_DATASET_PATH = args.new_dataset_path
     TEACHER_MODEL = args.teacher_model
     TOKENIZER_MODEL = args.tokenizer_model
     NUM_PARAPHRASALS = args.num_paraphrasals
@@ -151,6 +153,6 @@ def run(args_list):
     dataset_dict = dataset_dict.map(add_reduced_instructions, desc="Applying mapping")
 
     # Push to HuggingFace
-    print(f"\nPushing updated dataset to {DATASET_PATH}...")
-    dataset_dict.push_to_hub(DATASET_PATH)
-    print(f"\nSuccessfully pushed to Hugging Face at path {DATASET_PATH}")
+    print(f"\nPushing updated dataset to {NEW_DATASET_PATH}...")
+    dataset_dict.push_to_hub(NEW_DATASET_PATH)
+    print(f"\nSuccessfully pushed to Hugging Face at path {NEW_DATASET_PATH}")

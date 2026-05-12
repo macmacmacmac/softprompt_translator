@@ -42,7 +42,7 @@ ALL_LAYER_COMBINATIONS = [
 
 # Best Patches of Layer Combinations for Patchscopes Experiment
 BEST_PATCHES = [
-    {"min_source": -1, "max_source": -1, "min_target": -1, "max_target": -1},
+    # {"min_source": -1, "max_source": -1, "min_target": -1, "max_target": -1},
     # {"min_source": 10, "max_source": 10, "min_target": 0, "max_target": 0},
     # {"min_source": 5, "max_source": 5, "min_target": 24, "max_target": 24},
     # {"min_source": 6, "max_source": 6, "min_target": 26, "max_target": 26},

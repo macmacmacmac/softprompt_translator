@@ -22,10 +22,11 @@ def run(args_list):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--db_path", type=str, default="./datasets/mapper_classification_datasets/DoD_3_5k.sqlite")
-    parser.add_argument("--trained_soft_prompts_dir", type=str, default="./trained_soft_prompts")
+    parser.add_argument("--trained_soft_prompts_dir", type=str, default="./trained_soft_prompts/DoD_3_5k_peft")
     parser.add_argument("--compiled_dataset_dir", type=str, default="./datasets/mapper_training_dataset")
     parser.add_argument("--seed", type=int, default=47)
-    parser.add_argument("--limit", type=int, default=1616, help="Limit the number of mini-datasets to process (e.g., 2000)")
+    parser.add_argument("--limit", type=int, default=None, help="Limit the number of mini-datasets to process (e.g., 2000)")
+    parser.add_argument("--peft", action="store_true", help="Use PEFT style way of loading soft prompts")
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables
@@ -34,9 +35,10 @@ def run(args_list):
     COMPILED_DATASET_DIR = args.compiled_dataset_dir
     SEED = args.seed
     LIMIT = args.limit
+    LOAD_LIKE_PEFT = args.peft
 
-    # Determine DB Name
-    DB_NAME = DB_PATH.split('/')[-1].split('.')[0]
+    # Determine Dataset Name
+    DATASET_NAME = TRAINED_SOFT_PROMPTS_DIR.split('/')[-1]
 
     # Fetch all hard prompts from SQLite
     print(f"Connecting to database: {DB_PATH}...")
@@ -62,27 +64,33 @@ def run(args_list):
     compiled_data = []
     missing_count = 0
 
-    print(f"Scanning soft prompt directories in: {TRAINED_SOFT_PROMPTS_DIR}/{DB_NAME}...")
+    print(f"Scanning soft prompt directories in: {TRAINED_SOFT_PROMPTS_DIR} ...")
 
     # For each dataset_id and its associated hard prompt in the Dataset Map    
     for dataset_id, hard_prompt in tqdm(dataset_map.items(), desc="Compiling Data"):
 
         # Construct a path to fetch to trained the prompts for the dataset_id 
-        soft_prompt_path = os.path.join(TRAINED_SOFT_PROMPTS_DIR, DB_NAME, f"dataset_{dataset_id}", "softprompt.pt")
+        soft_prompt_path = os.path.join(TRAINED_SOFT_PROMPTS_DIR, f"dataset_{dataset_id}", "softprompt.pt")
         
         # Skip if the soft prompt doesn't exist for the current dataset id
         if not os.path.exists(soft_prompt_path):
             missing_count += 1
             tqdm.write(f"Warning: Missing soft prompts for dataset: {dataset_id}")
             continue
+
+        # Load Like how Peft Stores soft prompts
+        if LOAD_LIKE_PEFT:
+            soft_prompt_tensor = torch.load(soft_prompt_path, map_location="cpu", weights_only=True)
+
+        # Load like how Custom Implementation of SoftPrompt class stores soft prompts
+        else:
+            # Load the saved state dict
+            # weights_only=True is a PyTorch security best practice for loading tensors
+            state_dict = torch.load(soft_prompt_path, map_location="cpu", weights_only=True)
             
-        # Load the saved state dict
-        # weights_only=True is a PyTorch security best practice for loading tensors
-        state_dict = torch.load(soft_prompt_path, map_location="cpu", weights_only=True)
-        
-        # Extract the prompt embeddings. 
-        # The SoftPrompt class saves it as shape (1, num_tokens, embed_dim).
-        soft_prompt_tensor = state_dict['prompt_embeddings'].squeeze(0)         # (num_tokens, embed_dim)
+            # Extract the prompt embeddings
+            # The SoftPrompt class saves it as shape (1, num_tokens, embed_dim).
+            soft_prompt_tensor = state_dict['prompt_embeddings'].squeeze(0)         # (num_tokens, embed_dim)
         
         # Accumulate Dataset ID, Soft Prompt Tensor, and the Hard Prompt Tensor into the list of compiled data
         compiled_data.append({
@@ -110,12 +118,12 @@ def run(args_list):
 
     # Determine the directory name based on whether a LIMIT was provided
     if LIMIT is not None and LIMIT > 0:
-        db_dir_name = f"{DB_NAME}_{LIMIT}"
+        save_dir_name = f"{DATASET_NAME}_{LIMIT}"
     else:
-        db_dir_name = DB_NAME
+        save_dir_name = DATASET_NAME
 
     # Create the Directory for saving the datasets
-    save_dir = os.path.join(COMPILED_DATASET_DIR, db_dir_name)
+    save_dir = os.path.join(COMPILED_DATASET_DIR, save_dir_name)
     os.makedirs(save_dir, exist_ok=True)
     
     # Save the Training and Validation Datasets

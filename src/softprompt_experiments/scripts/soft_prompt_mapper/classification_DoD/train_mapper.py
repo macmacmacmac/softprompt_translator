@@ -72,7 +72,7 @@ def run(args_list=None):
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_tokens", type=int, default=20)
-    parser.add_argument("--mapper_dataset_path", type=str, default="./datasets/mapper_training_dataset/DoD_3_5k_700")
+    parser.add_argument("--mapper_dataset_path", type=str, default="./datasets/mapper_training_dataset/DoD_3_5k_peft")
     parser.add_argument("--save_dir", type=str, default="./mapper_lora_weights")
     parser.add_argument("--lora_rank", type=int, default=4)
     parser.add_argument("--lora_dropout", type=float, default=0.1)
@@ -82,7 +82,7 @@ def run(args_list=None):
     # Parse all the arguments into Variables
     MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
     MAPPER_DATASET_PATH = args.mapper_dataset_path
-    DB_NAME = MAPPER_DATASET_PATH.split('/')[-1]
+    DATASET_NAME = MAPPER_DATASET_PATH.split('/')[-1]
     SAVE_DIR = args.save_dir
     LR = args.lr
     EPOCHS = args.epochs
@@ -313,7 +313,7 @@ def run(args_list=None):
     # ┌───────────────────────────────────────────────┐
     # │               SAVE LORA ADAPTERS              │
     # └───────────────────────────────────────────────┘
-    lora_weights_save_dir = os.path.join(SAVE_DIR, DB_NAME)
+    lora_weights_save_dir = os.path.join(SAVE_DIR, DATASET_NAME)
     os.makedirs(lora_weights_save_dir, exist_ok=True)
     model.save_pretrained(lora_weights_save_dir)
     tokenizer.save_pretrained(lora_weights_save_dir)

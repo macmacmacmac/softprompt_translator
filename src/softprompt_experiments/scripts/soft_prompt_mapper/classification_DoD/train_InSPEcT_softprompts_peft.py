@@ -6,6 +6,7 @@ from transformers import default_data_collator, get_linear_schedule_with_warmup,
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import pandas as pd
 
 
 # ┌───────────────────────────────────────────────┐
@@ -240,6 +241,7 @@ def train_soft_prompts(model,
 
         # Calculate total loss
         total_loss = 0
+        train_correct = 0
 
         # For each batch in the dataloader
         for batch in tqdm(train_dataloader):
@@ -257,6 +259,15 @@ def train_soft_prompts(model,
             loss = outputs.loss
             total_loss += loss.detach()
 
+            # Calculate batch accuracy
+            with torch.no_grad():
+                top_tokens = torch.argmax(outputs.logits, dim=-1)[:, num_tokens-1:-1]
+                is_prediction_correct = (
+                    (batch['labels'] == -100) |
+                    (batch['labels'] == top_tokens)
+                ).all(dim=1)
+                train_correct += sum(is_prediction_correct).item()
+
             # Compute Gradients and Do backpropagation
             loss.backward()
             optimizer.step()
@@ -265,18 +276,17 @@ def train_soft_prompts(model,
         # Eval Model at the end of this epoch in terms of loss and correctness
         eval_loss, eval_correct = eval_soft_prompts(model, eval_dataloader, num_tokens, device)
 
-        # Calculate Val accuracy
-        # val_accuracy = eval_correct / (len(eval_dataloader) * batch_size)
+        # Calculate Val and Train accuracy
         val_accuracy = eval_correct / len(eval_dataloader.dataset)
-
+        train_accuracy = train_correct / len(train_dataloader.dataset)
 
         # Calculate Avg Val and Training Loss    
         avg_val_loss = eval_loss / len(eval_dataloader)
         avg_train_loss = total_loss / len(train_dataloader)
 
         tqdm.write(f"\nEpoch {epoch + 1} Summary:")
-        tqdm.write(f"Train -> Loss: {avg_train_loss: .4f}")
-        tqdm.write(f"Val   -> Loss: {avg_val_loss: .4f} | Accuracy: {val_accuracy: .2f}%")
+        tqdm.write(f"Train -> Loss: {avg_train_loss: .4f} | Accuracy: {train_accuracy * 100: .2f}%")
+        tqdm.write(f"Val   -> Loss: {avg_val_loss: .4f} | Accuracy: {val_accuracy * 100: .2f}%")
 
     # Save the trained soft prompt
     os.makedirs(soft_prompt_save_dir, exist_ok=True)
@@ -284,6 +294,12 @@ def train_soft_prompts(model,
     torch.save(trainable_params, os.path.join(soft_prompt_save_dir, "softprompt.pt"))
     tqdm.write(f"\nTraining complete! Soft prompt saved to {soft_prompt_save_dir}/softprompt.pt")
 
+    return {
+        "train_accuracy": round(train_accuracy * 100, 4),
+        "val_accuracy": round(val_accuracy * 100, 4),
+        "avg_train_loss": avg_train_loss.item() if torch.is_tensor(avg_train_loss) else avg_train_loss,
+        "avg_val_loss": avg_val_loss.item() if torch.is_tensor(avg_val_loss) else avg_val_loss
+    }
 
 # Performs Evaluation Based on Exact Token Match
 def eval_soft_prompts(model, 
@@ -311,51 +327,9 @@ def eval_soft_prompts(model,
             (batch['labels'] == -100) |   # Ignore padding tokens (always "correct")
             (batch['labels'] == top_tokens)  # Or actual match
         ).all(dim=1)                      # All tokens in sequence must match
-        eval_correct += sum(is_prediction_correct)
+        eval_correct += sum(is_prediction_correct).item()
     
     return eval_loss, eval_correct
-
-
-
-# # Performs Evaluation Based on Exact Sequence Match
-# def eval_soft_prompts(model, eval_dataloader, num_tokens, device):
-    
-#     # Set model to evaluation mode
-#     model.eval()                          
-#     eval_loss = 0
-#     eval_correct = 0
-    
-#     for batch in tqdm(eval_dataloader):
-#         batch = {k: v.to(device) for k, v in batch.items()}
-#         with torch.no_grad():
-#             outputs = model(**batch)
-            
-#         loss = outputs.loss
-#         eval_loss += loss.detach().float()
-        
-#         # --- THE FIX: SHIFT LOGITS AND LABELS ---
-#         logits = outputs.logits
-#         labels = batch["labels"]
-        
-#         shifted_logits = logits[..., :-1, :].contiguous()
-#         shifted_labels = labels[..., 1:].contiguous()
-        
-#         # Get the predicted token ids
-#         preds = torch.argmax(shifted_logits, dim=-1)
-        
-#         # Create a mask to ignore the -100 padding tokens
-#         valid_mask = (shifted_labels != -100)
-        
-#         # Check where predictions exactly match the labels
-#         correct_tokens = (preds == shifted_labels) & valid_mask
-        
-#         # For strict classification accuracy, the ENTIRE sequence must be correct.
-#         # If the number of correct tokens equals the number of valid target tokens, it's a perfect match!
-#         correct_seqs = correct_tokens.sum(dim=1) == valid_mask.sum(dim=1)
-        
-#         eval_correct += correct_seqs.sum().item()
-    
-#     return eval_loss, eval_correct
 
 
 # ┌───────────────────────────────────────────────┐
@@ -371,12 +345,13 @@ def run(args_list=None):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--save_dir", type=str, default="./inspect_soft_prompts")
+    parser.add_argument("--save_dir", type=str, default="./inspect_soft_prompts_peft_llama_2")
     parser.add_argument("--num_tokens", type=int, default=20)
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables
-    MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
+    # MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
+    MODEL_NAME = "meta-llama/Llama-2-7b-hf"
     SAVE_DIR = args.save_dir
     NUM_TOKENS = args.num_tokens
 
@@ -393,10 +368,12 @@ def run(args_list=None):
     prompt_tuning_config = PromptTuningConfig(
         task_type=TaskType.CAUSAL_LM,
         prompt_tuning_init=PromptTuningInit.RANDOM, # Random Weight Init for Prompt Tuning Params
+        # prompt_tuning_init=PromptTuningInit.SAMPLE_VOCAB, # Sampling from the Model's Vocab for Init
         num_virtual_tokens=NUM_TOKENS,
         tokenizer_name_or_path=MODEL_NAME
     )
 
+    all_stats = []
 
     # For each InSPEcT dataset in the global config
     for dataset_name in INSPECT_DATASET_CONFIGS:
@@ -436,14 +413,13 @@ def run(args_list=None):
         base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
 
         # Prepare Soft Prompt Model
-        # TODO: Use Mac's SoftPrompt instead of PEFT library here
         soft_prompt_model = get_peft_model(base_model, prompt_tuning_config)
 
         # Prepare Save Dir for the Trained Tokens
         soft_prompt_save_dir = construct_soft_prompt_save_dir_path(dataset_name, SAVE_DIR, NUM_TOKENS)
 
         # Train the Soft Prompts
-        train_soft_prompts(
+        stats = train_soft_prompts(
             model=soft_prompt_model,
             train_dataloader=train_dataloader,
             eval_dataloader=val_dataloader,
@@ -454,11 +430,23 @@ def run(args_list=None):
             batch_size=batch_size,
             device=DEVICE
         )
+        
+        stats["dataset_id"] = dataset_name
+        all_stats.append(stats)
 
         # Clean up allocations that might be memory intensive
         del soft_prompt_model
         del base_model
         torch.cuda.empty_cache()
+
+    if all_stats:
+        stats_df = pd.DataFrame(all_stats)
+        # Reorder columns to ensure exact CSV format
+        stats_df = stats_df[["dataset_id", "train_accuracy", "val_accuracy", "avg_train_loss", "avg_val_loss"]]
+        
+        stats_csv_path = os.path.join(SAVE_DIR, "accuracy_stats.csv")
+        stats_df.to_csv(stats_csv_path, index=False)
+        print(f"\nSaved accuracy stats to {stats_csv_path}")
 
 
 

@@ -4,6 +4,7 @@ from tqdm import tqdm
 import torch
 from datasets import load_dataset
 from typing import List, Dict, Any
+import random
 
 
 def compile_data_list(dataset_records: List[Dict[str, Any]], 
@@ -14,7 +15,7 @@ def compile_data_list(dataset_records: List[Dict[str, Any]],
     missing_count = 0
     last_task_name = ""
 
-    print(f"Scanning soft prompt directories in: {trained_soft_prompts_dir}/{dataset_name}...")
+    print(f"Scanning soft prompt directories in: {trained_soft_prompts_dir} ...")
 
     # For each Task Name and its associated hard prompt in the Train Dataset Map    
     for task_map in tqdm(dataset_records, desc="Compiling Data"):
@@ -31,7 +32,8 @@ def compile_data_list(dataset_records: List[Dict[str, Any]],
             last_task_name = task_name # Update last task name
 
             # Construct a path to fetch to trained the prompts for the task name
-            soft_prompt_path = os.path.join(trained_soft_prompts_dir, dataset_name, task_name, "softprompt.pt")
+            # soft_prompt_path = os.path.join(trained_soft_prompts_dir, dataset_name, task_name, "softprompt.pt")
+            soft_prompt_path = os.path.join(trained_soft_prompts_dir, task_name, "softprompt.pt")
         
             # Skip if the soft prompt doesn't exist for the current task name
             if not os.path.exists(soft_prompt_path):
@@ -78,8 +80,8 @@ def run(args_list):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english-filtered")
-    parser.add_argument("--trained_soft_prompts_dir", type=str, default="./trained_soft_prompts")
+    parser.add_argument("--dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english-filtered-100x-augmented")
+    parser.add_argument("--trained_soft_prompts_dir", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english-filtered")
     parser.add_argument("--compiled_dataset_dir", type=str, default="./datasets/mapper_training_dataset")
     parser.add_argument("--num_instances", type=int, default=10)
     parser.add_argument("--seed", type=int, default=47)
@@ -96,32 +98,42 @@ def run(args_list):
     DATASET_NAME = DATASET_PATH.split('/')[-1]
 
     # Fetch all hard prompts from Hugging Face Dataset
-    # hf_dataset = load_dataset(DATASET_PATH).select_columns(['task_name', 'reduced_instructions', 'input', 'output'])
-    hf_dataset = load_dataset(DATASET_PATH).select_columns(['task_name', 'instruction', 'input', 'output'])
+    hf_dataset = load_dataset(DATASET_PATH).select_columns(['task_name', 'instruction', 'reduced_instructions', 'input', 'output'])
     
-    # First, explode the instructions so each row has a single reduced_instruction
-    # train_dataset_df = hf_dataset['train'].to_pandas().explode('reduced_instructions')
-    # test_dataset_df = hf_dataset['test'].to_pandas().explode('reduced_instructions')
-
+    # Convert to Pandas
     train_dataset_df = hf_dataset['train'].to_pandas()
     test_dataset_df = hf_dataset['test'].to_pandas()
 
-    # Then group by task and instruction, and take the first 3 rows from each group
-    # train_dataset_df = train_dataset_df.groupby(['task_name', 'reduced_instructions']).head(3).reset_index(drop=True)
-    # test_dataset_df = test_dataset_df.groupby(['task_name', 'reduced_instructions']).head(3).reset_index(drop=True)
+    # Add instruction field to reduced_instructions for train_df
+    train_dataset_df['reduced_instructions'] = train_dataset_df.apply(
+        lambda row: list(row['reduced_instructions']) + [row['instruction']],
+        axis=1 # Apply row by row
+    )
 
+
+    # # Pick only 1 augmentation hard Prompt
+    # # Sample 1 reduced_instruction per task_name
+    # sampled_instructions = train_dataset_df.groupby('task_name')['reduced_instructions'].first().apply(
+    #     lambda row: random.sample(list(row), 1)
+    # )
+    
+    # # Map the chosen sampled instruction back to all rows of the corresponding task
+    # train_dataset_df['reduced_instructions'] = train_dataset_df['task_name'].map(sampled_instructions)
+    
+    # Drop the instruction column in train_df and reduced_instructions in test_df
+    train_dataset_df = train_dataset_df.drop(columns=['instruction'], axis=1)
+    test_dataset_df = test_dataset_df.drop(columns=['reduced_instructions'], axis=1)
+
+    # Explode the reduced instructions for train_df and rename to instructions
+    train_dataset_df = train_dataset_df.explode('reduced_instructions').rename(columns={
+        'reduced_instructions': 'instruction'
+    })
+
+    # Group by task and instruction, and take the first NUM_INSTANCE rows from each group
     train_dataset_df = train_dataset_df.groupby(['task_name', 'instruction']).head(NUM_INSTANCES).reset_index(drop=True)
     test_dataset_df = test_dataset_df.groupby(['task_name', 'instruction']).head(NUM_INSTANCES).reset_index(drop=True)
 
-    # NOW: Group them back together and fold the input/output pairs into an 'instances' column
-    # train_dataset_df = train_dataset_df.groupby(['task_name', 'reduced_instructions']).apply(
-    #     lambda x: x[['input', 'output']].to_dict('records')
-    # ).reset_index(name='instances')
-
-    # test_dataset_df = test_dataset_df.groupby(['task_name', 'reduced_instructions']).apply(
-    #     lambda x: x[['input', 'output']].to_dict('records')
-    # ).reset_index(name='instances')
-
+    # Group by task and instruction and fold the input/output pairs into an 'instances' column
     train_dataset_df = train_dataset_df.groupby(['task_name', 'instruction']).apply(
         lambda x: x[['input', 'output']].to_dict('records')
     ).reset_index(name='instances')
@@ -147,7 +159,7 @@ def run(args_list):
 
     # Create the Directory for saving the datasets
     # save_dir = os.path.join(COMPILED_DATASET_DIR, DATASET_NAME)
-    save_dir = os.path.join(COMPILED_DATASET_DIR, DATASET_NAME + "_original_instructions")
+    save_dir = os.path.join(COMPILED_DATASET_DIR, DATASET_NAME)
     os.makedirs(save_dir, exist_ok=True)
     
     # Save the Training and Validation Datasets
