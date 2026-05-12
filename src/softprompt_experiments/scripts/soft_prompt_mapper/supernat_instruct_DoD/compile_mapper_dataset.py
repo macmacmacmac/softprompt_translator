@@ -15,7 +15,7 @@ def compile_data_list(dataset_records: List[Dict[str, Any]],
     missing_count = 0
     last_task_name = ""
 
-    print(f"Scanning soft prompt directories in: {trained_soft_prompts_dir}/{dataset_name}...")
+    print(f"Scanning soft prompt directories in: {trained_soft_prompts_dir} ...")
 
     # For each Task Name and its associated hard prompt in the Train Dataset Map    
     for task_map in tqdm(dataset_records, desc="Compiling Data"):
@@ -32,7 +32,8 @@ def compile_data_list(dataset_records: List[Dict[str, Any]],
             last_task_name = task_name # Update last task name
 
             # Construct a path to fetch to trained the prompts for the task name
-            soft_prompt_path = os.path.join(trained_soft_prompts_dir, dataset_name, task_name, "softprompt.pt")
+            # soft_prompt_path = os.path.join(trained_soft_prompts_dir, dataset_name, task_name, "softprompt.pt")
+            soft_prompt_path = os.path.join(trained_soft_prompts_dir, task_name, "softprompt.pt")
         
             # Skip if the soft prompt doesn't exist for the current task name
             if not os.path.exists(soft_prompt_path):
@@ -80,7 +81,7 @@ def run(args_list):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english-filtered-100x-augmented")
-    parser.add_argument("--trained_soft_prompts_dir", type=str, default="./trained_soft_prompts")
+    parser.add_argument("--trained_soft_prompts_dir", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english-filtered")
     parser.add_argument("--compiled_dataset_dir", type=str, default="./datasets/mapper_training_dataset")
     parser.add_argument("--num_instances", type=int, default=10)
     parser.add_argument("--seed", type=int, default=47)
