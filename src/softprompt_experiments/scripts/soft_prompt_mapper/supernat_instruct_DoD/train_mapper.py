@@ -177,7 +177,7 @@ def run(args_list=None):
         collate_fn = collator
     )
     print(f"After subsetting, train size is: {len(train_dataloader.dataset)}")
-
+    exit()
 
     # ┌───────────────────────────────────────────────┐
     # │                 TRAINING LOOP                 │
