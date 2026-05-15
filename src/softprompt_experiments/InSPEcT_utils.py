@@ -152,10 +152,10 @@ def create_few_shot_prompt(num_tokens, separator='|', seed=47):
 
 def create_few_shot_prompt_super_nat(num_tokens, separator='|', seed=47):
     random.seed(seed)
-    selected_examples = random.sample(SUPERNAT_PARAPHRASED_INSTRUCTIONS, 3)
+    selected_examples = [f"Instruction: {example}" for example in random.sample(SUPERNAT_PARAPHRASED_INSTRUCTIONS, 3)]
     separator = " " + separator + " "
-    prompt = separator.join(selected_examples) + separator[:-1] + " x" * num_tokens
-    print(f"Super Natural Few Shot Target Prompt: \n{prompt}")
+    prompt = separator.join(selected_examples) + separator + "Instruction:" + " x" * num_tokens
+    # print(f"Super Natural Few Shot Target Prompt: \n\n{prompt}")
     return prompt
 
 
@@ -194,7 +194,7 @@ def perform_inspect_for_src_tgt_pair(
     target_inp = tokenizer(target_prompt, return_tensors="pt").to(DEVICE)
 
     # Determine target position based on target prompt type
-    if target_prompt_type == 'few_shot':
+    if target_prompt_type == 'few_shot' or target_prompt_type == "few_shot_supernat":
         # Calculate position for patching (at placeholder token (x) positions)
         target_position = target_inp["input_ids"].shape[1] - num_tokens # Can add -1 for the ":" in the end
 

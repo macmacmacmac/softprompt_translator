@@ -2,13 +2,13 @@
 #SBATCH -N 1
 #SBATCH -n 8
 #SBATCH --mem=16g
-#SBATCH -J "16bitPeftRandom"
-#SBATCH -p short
-#SBATCH -t 1-00:00:00
+#SBATCH -J "SuperNat-Inspect"
+#SBATCH -p long
+#SBATCH -t 2-00:00:00
 #SBATCH --gres=gpu:1
 #SBATCH -C A100
-#SBATCH -o 16bit_peft_random_logs.out
-#SBATCH -e 16bit_peft_random_logs.out
+#SBATCH -o supernat_inspect_logs.out
+#SBATCH -e supernat_inspect_logs.out
 
 # -----------------------------
 # Load Required Modules
@@ -38,5 +38,5 @@ export PYTORCH_ALLOC_CONF=expandable_segments:True
 # Run the Job (Example: Python Script / Module)
 # -----------------------------
 # python -u -m run_experiment --scripts soft_prompt_mapper.supernat_instruct_DoD.train_softprompts_peft
-# python -u -m run_experiment --scripts soft_prompt_mapper.supernat_instruct_DoD.generate_paraphrasals
-python -u -m run_experiment --scripts soft_prompt_mapper.classification_DoD.train_InSPEcT_softprompts_peft
+python -u -m run_experiment --scripts soft_prompt_mapper.supernat_instruct_DoD.apply_InSPEcT_on_DoD
+# python -u -m run_experiment --scripts soft_prompt_mapper.classification_DoD.train_InSPEcT_softprompts_peft

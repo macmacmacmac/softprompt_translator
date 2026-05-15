@@ -4,44 +4,27 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from src.softprompt_experiments.InSPEcT_utils import elicit_description_using_inspect_technique, ALL_LAYER_COMBINATIONS, BEST_PATCHES
 import pandas as pd
-import string
 from tqdm import tqdm
-import collections
-from rouge_score import rouge_scorer
+import evaluate
 
-ROUGE_SCORER = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
+ROUGE_METRIC = evaluate.load("rouge")
 
 def calculate_eval_metrics(soft_prompt_verbalization, hard_prompt):
-    """Calculates ROUGE-L and Token Level F1"""
+    """
+    Calculates ROUGE-L 
+    """
 
-    # Calculate ROUGE-L
-    rouge_scores = ROUGE_SCORER.score(target=hard_prompt, prediction=soft_prompt_verbalization)
-    rouge_l = rouge_scores['rougeL']
+    # Calculate ROUGE-L using evaluate
+    rouge_scores = ROUGE_METRIC.compute(
+        predictions=[soft_prompt_verbalization], 
+        references=[hard_prompt], 
+        use_stemmer=True
+    )
     
-    # Calculate Token-level F1
-    def normalize_text(text):
-        """Helper to lowercase and remove punctuation for tokenization"""
-        clean_text = text.translate(str.maketrans('', '', string.punctuation)).lower()
-        return clean_text.split()
-        
-    pred_tokens = normalize_text(soft_prompt_verbalization)
-    gold_tokens = normalize_text(hard_prompt)
-    
-    # Count the intersection of tokens
-    common = collections.Counter(pred_tokens) & collections.Counter(gold_tokens)
-    num_same = sum(common.values())
-    
-    # Handle edge cases
-    if len(pred_tokens) == 0 or len(gold_tokens) == 0:
-        token_f1 = 1.0 if pred_tokens == gold_tokens else 0.0
-    elif num_same == 0:
-        token_f1 = 0.0
-    else:
-        precision = 1.0 * num_same / len(pred_tokens)
-        recall = 1.0 * num_same / len(gold_tokens)
-        token_f1 = (2 * precision * recall) / (precision + recall)
+    # This directly returns the combined float score (F-measure)
+    rouge_L = rouge_scores['rougeL']
             
-    return rouge_l, token_f1
+    return rouge_L
 
 
 def run(args_list=None):
@@ -54,8 +37,8 @@ def run(args_list=None):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--soft_prompts_dataset_path", type=str, default="./datasets/mapper_training_dataset/DoD_3_5k_peft")
-    parser.add_argument("--soft_prompts_dir", type=str, default="./trained_soft_prompts/DoD_3_5k_peft")
+    parser.add_argument("--soft_prompts_dataset_path", type=str, default="./datasets/inspect_training_dataset/SUPER-NATURALINSTRUCTIONS-english-filtered_peft")
+    parser.add_argument("--training_stats_path", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english-filtered_peft/training_stats.csv")
     parser.add_argument("--results_save_dir", type=str, default="./inspect_results")
     parser.add_argument("--num_training_examples", type=int, default=50)
     parser.add_argument("--num_tokens", type=int, default=20)
@@ -69,7 +52,7 @@ def run(args_list=None):
     SOFT_PROMPTS_DATASET_PATH = args.soft_prompts_dataset_path
     DOD_NAME = ''.join(SOFT_PROMPTS_DATASET_PATH.split('/')[-1])
 
-    SOFT_PROMPTS_DIR = args.soft_prompts_dir
+    TRAINING_STATS_PATH = args.training_stats_path
     NUM_TRAINING_EXAMPLES = args.num_training_examples
     RESULTS_SAVE_DIR = args.results_save_dir + f"/{DOD_NAME}"
 
@@ -78,7 +61,7 @@ def run(args_list=None):
     DTYPE = torch.bfloat16 if DEVICE == "cuda" else torch.float32
 
     # Loading Training accuracy stats
-    TRAINING_STATS_DF = pd.read_csv(os.path.join(SOFT_PROMPTS_DIR, "accuracy_stats.csv"))
+    TRAINING_STATS_DF = pd.read_csv(TRAINING_STATS_PATH)
 
     # ┌───────────────────────────────────────────────┐
     # │              INSPECT MODEL PREP               │
@@ -105,12 +88,12 @@ def run(args_list=None):
     # List to hold the summary of best metrics across all datasets
     summary_results = []
 
-    # Meta List to store the verb scores for all training examples for all src layers and all target layers
-    verb_score_meta_list = [[[0 for _ in range(32)] for _ in range(32)] for _ in range(NUM_TRAINING_EXAMPLES)]
+    # Meta List to store the rouge_L for all training examples for all src layers and all target layers
+    rouge_L_meta_list = [[[0 for _ in range(32)] for _ in range(32)] for _ in range(NUM_TRAINING_EXAMPLES)]
 
     for example_idx, data in enumerate(tqdm(train_dataset[:NUM_TRAINING_EXAMPLES], desc="Performing InSPEcT on Train Soft Prompts")):
-        dataset_id = data["dataset_id"]
-        soft_prompt = data["soft_prompt"] # shape (1, soft_prompt_len, embed_dim)
+        task_name = data["task_name"]
+        soft_prompt = data["soft_prompt"] # shape (soft_prompt_len, embed_dim)
         hard_prompt = data["hard_prompt"]
 
         # Get Elicited Text using InSPEcT Technique
@@ -120,8 +103,8 @@ def run(args_list=None):
             num_tokens=NUM_TOKENS,
             soft_prompt=soft_prompt,
             dataset_name="REPLACE_ME",
-            layer_combinations=BEST_PATCHES,
-            # layer_combinations=ALL_LAYER_COMBINATIONS, # TODO: Uncomment this
+            # layer_combinations=BEST_PATCHES,
+            layer_combinations=ALL_LAYER_COMBINATIONS, # TODO: Uncomment this
             target_prompt_type='few_shot_supernat'
         )
 
@@ -132,32 +115,29 @@ def run(args_list=None):
             tgt_layer_idx = inspect_elicited_results[i]['target_layer'] + 1
 
             # Get all scores for the output text by InSPEcT
-            class_rate, f1_score = calculate_eval_metrics(output_text, hard_prompt)
-            verb_score = (class_rate + f1_score) / 2
-            inspect_elicited_results[i]['class_rate'] = class_rate
-            inspect_elicited_results[i]['f1_score'] = f1_score
-            inspect_elicited_results[i]['verb_score'] = verb_score
+            rouge_L = calculate_eval_metrics(output_text, hard_prompt)
+            inspect_elicited_results[i]['rouge_L'] = rouge_L
 
-            # Update the meta list with the verb score value
-            verb_score_meta_list[example_idx][src_layer_idx][tgt_layer_idx] = verb_score
+            # Update the meta list with the rouge_L value
+            rouge_L_meta_list[example_idx][src_layer_idx][tgt_layer_idx] = rouge_L
 
-        # Find the row with the highest verb score
-        max_verb_score_row = max(inspect_elicited_results, key=lambda x: x['verb_score'])
+        # Find the row with the highest rouge_L score
+        max_rouge_L_row = max(inspect_elicited_results, key=lambda x: x['rouge_L'])
 
         # Retrieve the training stats for this dataset
-        training_stats_df = TRAINING_STATS_DF[TRAINING_STATS_DF["dataset_id"] == dataset_id]
+        training_stats_df = TRAINING_STATS_DF[TRAINING_STATS_DF["task_name"] == task_name]
 
         # Save Elicitations using for this dataset
         os.makedirs(f"{RESULTS_SAVE_DIR}/train", exist_ok=True)
         df = pd.DataFrame(inspect_elicited_results)
-        df.to_csv(f'{RESULTS_SAVE_DIR}/train/{dataset_id}_elicitations.csv', index=False)
+        df.to_csv(f'{RESULTS_SAVE_DIR}/train/{task_name}_elicitations.csv', index=False)
 
         result_entry = {
-            "dataset": dataset_id,
-            "val_accuracy": training_stats_df['val_accuracy'].iloc[0] if len(training_stats_df) > 0 else None,
-            "max_verb_score": round(max_verb_score_row['verb_score'], 4),
-            "max_verb_score_src_layer": max_verb_score_row['source_layer'],
-            "max_verb_score_tgt_layer": max_verb_score_row['target_layer'],
+            "task_name": task_name,
+            "val_rougeL": training_stats_df['val_rougeL'].iloc[0] if len(training_stats_df) > 0 else None,
+            "max_rouge_L": round(max_rouge_L_row['rouge_L'], 4),
+            "max_rouge_L_src_layer": max_rouge_L_row['rouge_L'],
+            "max_rouge_L_tgt_layer": max_rouge_L_row['rouge_L'],
         }
 
         summary_results.append(result_entry)
@@ -171,10 +151,10 @@ def run(args_list=None):
     # ┌───────────────────────────────────────────────┐
     # │          CALCULATE THE BEST LAYER PAIR        │
     # └───────────────────────────────────────────────┘
-    verb_score_tensor = torch.tensor(verb_score_meta_list)
+    rouge_L_tensor = torch.tensor(rouge_L_meta_list)
 
     # Average the scores across all examples (dim 0)
-    mean_scores = torch.mean(verb_score_tensor.float(), dim=0)
+    mean_scores = torch.mean(rouge_L_tensor.float(), dim=0)
 
     # print("Mean scores for layers 13-17 (src x tgt):")
     # print(mean_scores[13:18, 13:18])
@@ -196,8 +176,8 @@ def run(args_list=None):
     # │      APPLY BEST LAYER PAIR TO TEST PROMPTS    │
     # └───────────────────────────────────────────────┘
     for example_idx, data in enumerate(tqdm(val_dataset, desc="Performing InSPEcT on Test Soft Prompts")):
-        dataset_id = data["dataset_id"]
-        soft_prompt = data["soft_prompt"] # shape (1, soft_prompt_len, embed_dim)
+        task_name = data["task_name"]
+        soft_prompt = data["soft_prompt"] # shape (soft_prompt_len, embed_dim)
         hard_prompt = data["hard_prompt"]
 
         # Get Elicited Text using InSPEcT Technique
@@ -208,7 +188,7 @@ def run(args_list=None):
             soft_prompt=soft_prompt,
             dataset_name="REPLACE_ME",
             layer_combinations=BEST_LAYER_PAIR,
-            target_prompt_type='few_shot'
+            target_prompt_type='few_shot_supernat'
         )
 
         # Evaluate InSPEcT results
@@ -216,16 +196,13 @@ def run(args_list=None):
             output_text = str(inspect_elicited_results[i]['output'])
 
             # Get all scores for the output text by InSPEcT
-            class_rate, f1_score = calculate_eval_metrics(output_text, hard_prompt)
-            verb_score = (class_rate + f1_score) / 2
-            inspect_elicited_results[i]['class_rate'] = class_rate
-            inspect_elicited_results[i]['f1_score'] = f1_score
-            inspect_elicited_results[i]['verb_score'] = verb_score
+            rouge_L = calculate_eval_metrics(output_text, hard_prompt)
+            inspect_elicited_results[i]['rouge_L'] = rouge_L
 
         # Save Elicitations using for this dataset
         os.makedirs(f"{RESULTS_SAVE_DIR}/test", exist_ok=True)
         df = pd.DataFrame(inspect_elicited_results)
-        df.to_csv(f'{RESULTS_SAVE_DIR}/test/{dataset_id}_elicitations.csv', index=False)
+        df.to_csv(f'{RESULTS_SAVE_DIR}/test/{task_name}_elicitations.csv', index=False)
 
 
 
