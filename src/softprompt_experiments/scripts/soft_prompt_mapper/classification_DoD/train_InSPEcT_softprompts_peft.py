@@ -23,7 +23,8 @@ COMMON_TEXT_LABEL = "text_label"
 INSPECT_DATASET_CONFIGS = {
     "stanfordnlp/sst2": {
         "epochs": 8,
-        "lr": 8e-4,
+        # "lr": 8e-4,
+        "lr": 8e-3,
         "batch_size": 8,
         "eval_split": "validation",
         "text_column": "sentence",
@@ -59,7 +60,8 @@ INSPECT_DATASET_CONFIGS = {
     },
     "SetFit/TREC-QC": {
         "epochs": 20,
-        "lr": 8e-4,
+        # "lr": 8e-4,
+        "lr": 8e-3,
         "batch_size": 8,
         "eval_split": "test",
         "text_column": "text",

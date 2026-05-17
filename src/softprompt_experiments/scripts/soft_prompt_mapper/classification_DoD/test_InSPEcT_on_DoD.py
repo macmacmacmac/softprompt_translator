@@ -2,7 +2,7 @@ import os
 import argparse
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from src.softprompt_experiments.InSPEcT_utils import elicit_description_using_inspect_technique, ALL_LAYER_COMBINATIONS, BEST_PATCHES
+from src.softprompt_experiments.InSPEcT_utils import elicit_description_using_inspect_technique
 import pandas as pd
 import string
 from tqdm import tqdm
@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 def calculate_eval_metrics(elicited_text, hard_prompt):
     """Calculates Class Rate, and F1 Score as defined by the InSPEcT methodology."""
-    classes = [c.strip() for c in hard_prompt.split(",")]
+    classes = hard_prompt.split(",")
 
     # Calculate Class Rate (Recall)
     clean_text = elicited_text.translate(str.maketrans('', '', string.punctuation)).lower()
@@ -74,105 +74,14 @@ def run(args_list=None):
 
 
     # ┌───────────────────────────────────────────────┐
-    # │           SOFT PROMPT DATASET PREP            │
+    # │                LOAD DATASETS                  │
     # └───────────────────────────────────────────────┘
-    train_dataset = torch.load(os.path.join(SOFT_PROMPTS_DATASET_PATH, 'train_mapper_dataset.pt'), map_location="cpu", weights_only=True)
     val_dataset = torch.load(os.path.join(SOFT_PROMPTS_DATASET_PATH, 'val_mapper_dataset.pt'), map_location="cpu", weights_only=True)
+    print(f"Validation Dataset size: {len(val_dataset)}")
 
-    print(f"Train Dataset size: {len(train_dataset)} | Validation Dataset size: {len(val_dataset)}")
-
-    # ┌───────────────────────────────────────────────┐
-    # │     PERFORM INSPECT ON TRAIN SOFT PROMPTS     │
-    # └───────────────────────────────────────────────┘
-    # List to hold the summary of best metrics across all datasets
-    summary_results = []
-
-    # Meta List to store the verb scores for all training examples for all src layers and all target layers
-    verb_score_meta_list = [[[0 for _ in range(32)] for _ in range(32)] for _ in range(NUM_TRAINING_EXAMPLES)]
-
-    for example_idx, data in enumerate(tqdm(train_dataset[:NUM_TRAINING_EXAMPLES], desc="Performing InSPEcT on Train Soft Prompts")):
-        dataset_id = data["dataset_id"]
-        soft_prompt = data["soft_prompt"] # shape (1, soft_prompt_len, embed_dim)
-        hard_prompt = data["hard_prompt"]
-
-        # Get Elicited Text using InSPEcT Technique
-        inspect_elicited_results = elicit_description_using_inspect_technique(
-            model=inspect_model,
-            tokenizer=tokenizer,
-            num_tokens=NUM_TOKENS,
-            soft_prompt=soft_prompt,
-            dataset_name="REPLACE_ME",
-            # layer_combinations=BEST_PATCHES,
-            layer_combinations=ALL_LAYER_COMBINATIONS, # TODO: Uncomment this
-            target_prompt_type='few_shot'
-        )
-
-        # Evaluate InSPEcT results
-        for i in range(len(inspect_elicited_results)):
-            output_text = str(inspect_elicited_results[i]['output'])
-            src_layer_idx = inspect_elicited_results[i]['source_layer'] + 1
-            tgt_layer_idx = inspect_elicited_results[i]['target_layer'] + 1
-
-            # Get all scores for the output text by InSPEcT
-            class_rate, f1_score = calculate_eval_metrics(output_text, hard_prompt)
-            verb_score = (class_rate + f1_score) / 2
-            inspect_elicited_results[i]['class_rate'] = class_rate
-            inspect_elicited_results[i]['f1_score'] = f1_score
-            inspect_elicited_results[i]['verb_score'] = verb_score
-
-            # Update the meta list with the verb score value
-            verb_score_meta_list[example_idx][src_layer_idx][tgt_layer_idx] = verb_score
-
-        # Find the row with the highest verb score
-        max_verb_score_row = max(inspect_elicited_results, key=lambda x: x['verb_score'])
-
-        # Retrieve the training stats for this dataset
-        training_stats_df = TRAINING_STATS_DF[TRAINING_STATS_DF["dataset_id"] == dataset_id]
-
-        # Save Elicitations using for this dataset
-        os.makedirs(f"{RESULTS_SAVE_DIR}/train", exist_ok=True)
-        df = pd.DataFrame(inspect_elicited_results)
-        df.to_csv(f'{RESULTS_SAVE_DIR}/train/{dataset_id}_elicitations.csv', index=False)
-
-        result_entry = {
-            "dataset": dataset_id,
-            "hard_prompt": hard_prompt,
-            "val_accuracy": training_stats_df['val_accuracy'].iloc[0] if len(training_stats_df) > 0 else None,
-            "max_verb_score": round(max_verb_score_row['verb_score'], 4),
-            "max_verb_score_src_layer": max_verb_score_row['source_layer'],
-            "max_verb_score_tgt_layer": max_verb_score_row['target_layer'],
-        }
-
-        summary_results.append(result_entry)
-
-    if summary_results:
-        summary_df = pd.DataFrame(summary_results)
-        summary_csv_path = f"{RESULTS_SAVE_DIR}/inspect_train_summary.csv"
-        summary_df.to_csv(summary_csv_path, index=False)
-        print(f"\nSaved master summary with best metrics to: {summary_csv_path}")
-
-    # ┌───────────────────────────────────────────────┐
-    # │          CALCULATE THE BEST LAYER PAIR        │
-    # └───────────────────────────────────────────────┘
-    verb_score_tensor = torch.tensor(verb_score_meta_list)
-
-    # Average the scores across all examples (dim 0)
-    mean_scores = torch.mean(verb_score_tensor.float(), dim=0)
-
-    # print("Mean scores for layers 13-17 (src x tgt):")
-    # print(mean_scores[13:18, 13:18])
-
-    # Find the indices of the maximum value across both dimensions
-    best_src_layer, best_tgt_layer = torch.where(mean_scores == mean_scores.max())
-
-    # Get the first occurrence if there are multiple maximums
-    best_src_layer = best_src_layer[0].item() - 1
-    best_tgt_layer = best_tgt_layer[0].item() - 1
-    
-    print(f"Best Layer Pair from Training Subset: Source Layer {best_src_layer}, Target Layer {best_tgt_layer}")
 
     BEST_LAYER_PAIR = [
-        {"min_source": best_src_layer, "max_source": best_src_layer, "min_target": best_tgt_layer, "max_target": best_tgt_layer}
+        {"min_source": 18, "max_source": 18, "min_target": 28, "max_target": 28}
     ]
 
     # ┌───────────────────────────────────────────────┐
@@ -222,12 +131,11 @@ def run(args_list=None):
 
         result_entry = {
             "dataset": dataset_id,
-            "hard_prompt": hard_prompt,
             "val_accuracy": training_stats_df['val_accuracy'].iloc[0] if len(training_stats_df) > 0 else None,
             "max_class_rate": round(max_class_rate_row['class_rate'], 4),
-            "max_f1_score": round(max_f1_score_row['f1_score'], 4),
             "max_class_rate_src_layer": max_class_rate_row['source_layer'],
             "max_class_rate_tgt_layer": max_class_rate_row['target_layer'],
+            "max_f1_score": round(max_f1_score_row['class_rate'], 4),
             "max_f1_score_src_layer": max_f1_score_row['source_layer'],
             "max_f1_score_tgt_layer": max_f1_score_row['target_layer'],
         }

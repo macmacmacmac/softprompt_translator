@@ -22,7 +22,7 @@ def run(args_list):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--db_path", type=str, default="./datasets/mapper_classification_datasets/DoD_3_5k.sqlite")
-    parser.add_argument("--trained_soft_prompts_dir", type=str, default="./trained_soft_prompts/DoD_3_5k_peft")
+    parser.add_argument("--trained_soft_prompts_dir", type=str, default="./trained_soft_prompts/DoD_3_5k_peft_sample_vocab")
     parser.add_argument("--compiled_dataset_dir", type=str, default="./datasets/mapper_training_dataset")
     parser.add_argument("--seed", type=int, default=47)
     parser.add_argument("--limit", type=int, default=None, help="Limit the number of mini-datasets to process (e.g., 2000)")

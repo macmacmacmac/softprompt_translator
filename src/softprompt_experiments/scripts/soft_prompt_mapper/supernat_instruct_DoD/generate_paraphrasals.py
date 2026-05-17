@@ -15,10 +15,10 @@ def run(args_list):
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english-filtered")
-    parser.add_argument("--new_dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english-filtered-100x-augmented")
+    parser.add_argument("--new_dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english-filtered-100x-augmented-paraphased")
     parser.add_argument("--teacher_model", type=str, default="mistralai/Mistral-Small-3.1-24B-Instruct-2503")
     parser.add_argument("--tokenizer_model", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
-    parser.add_argument("--num_paraphrasals", type=int, default=100, help="Number of paraphrasals to generate per instruction")
+    parser.add_argument("--num_paraphrasals", type=int, default=10, help="Number of paraphrasals to generate per instruction")
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all arguments into Global Variables
@@ -61,7 +61,7 @@ def run(args_list):
     tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_MODEL)
 
     instructions_to_paraphrase = []  # list of instructions
-    paraphrased_map = {}             # original_instruction -> reduced_instruction
+    paraphrased_map = {}             # original_instruction -> paraphrased_instruction
     original_token_counts = {}       # original_instruction -> token_count
 
     print(f"\nChecking token lengths...")
@@ -94,11 +94,10 @@ def run(args_list):
 
     # TODO: Refine this further after spot checking
     system_prompt = (
-        "You are an expert at simplifying and extremely condensing instructions."
-        "Your task is to paraphrase the following instruction into a highly concise statement."
+        "You are an expert at paraphrasing instructions. "
+        "Your task is to rephrase the following instruction using different words and sentence structures while keeping the exact same meaning and level of detail. "
         "CRITICAL: You MUST explicitly preserve all specific classes, exact tags, labels, output formats, and special syntax constraints. "
-        "CRITICAL: Do NOT oversimplify or remove specific mappings between concepts (e.g., specifying which sentence is the premise, exact sentence counts, positional logic, or structural relationships). "
-        "Use a maximum of 3 to 5 short sentences. Strip away ONLY filler words, long narrative examples, and conversational redundant explanations. "
+        "CRITICAL: Do NOT alter or remove specific mappings between concepts (e.g., specifying which sentence is the premise, exact sentence counts, positional logic, or structural relationships). "
         "Output ONLY the paraphrased instruction text and absolutely nothing else. Do NOT include phrases like 'Here is the paraphrased version'."
     )
 
@@ -117,8 +116,8 @@ def run(args_list):
         instruction = instructions_to_paraphrase[i]
 
         # Strip whitespace just in case the model padded the output
-        reduced_texts = [out.text.strip() for out in output.outputs]
-        paraphrased_map[instruction] = reduced_texts
+        paraphrased_texts = [out.text.strip() for out in output.outputs]
+        paraphrased_map[instruction] = paraphrased_texts
 
     # We delete the LLM object to free up GPU VRAM as soon as generation is done
     del llm
@@ -129,14 +128,14 @@ def run(args_list):
     print(f"\nSaving a log of the paraphrased instructions to 'paraphrased_instructions_log.json'...")
     log_data = []
     for instruction in instructions_to_paraphrase:
-        reduced_instructions = paraphrased_map[instruction]
-        reduced_token_counts = [len(tokenizer.encode(ri, add_special_tokens=False)) for ri in reduced_instructions]
+        paraphrased_instructions = paraphrased_map[instruction]
+        paraphrased_token_counts = [len(tokenizer.encode(ri, add_special_tokens=False)) for ri in paraphrased_instructions]
         log_data.append({
             "task_names": list(unique_instructions[instruction]),
             "original_instruction": instruction,
             "original_token_count": original_token_counts[instruction],
-            "reduced_instructions": reduced_instructions,
-            "reduced_token_counts": reduced_token_counts
+            "paraphrased_instructions": paraphrased_instructions,
+            "paraphrased_token_counts": paraphrased_token_counts
         })
     
     with open("paraphrased_instructions_log.json", "w", encoding="utf-8") as f:
@@ -145,12 +144,12 @@ def run(args_list):
     # Map the reduced instructions back to the main dataset
     print(f"\nMapping paraphrased instructions back to the main dataset rows...")
     
-    def add_reduced_instructions(example):
-        example["reduced_instructions"] = paraphrased_map[example["instruction"]]
+    def add_paraphrased_instructions(example):
+        example["paraphrased_instructions"] = paraphrased_map[example["instruction"]]
         return example
 
     # Using map with batched=False here is extremely fast for dictionary lookups
-    dataset_dict = dataset_dict.map(add_reduced_instructions, desc="Applying mapping")
+    dataset_dict = dataset_dict.map(add_paraphrased_instructions, desc="Applying mapping")
 
     # Push to HuggingFace
     print(f"\nPushing updated dataset to {NEW_DATASET_PATH}...")

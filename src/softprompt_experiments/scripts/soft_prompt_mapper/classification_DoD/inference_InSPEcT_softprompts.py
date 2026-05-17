@@ -3,8 +3,6 @@ import argparse
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
-from src.softprompt_experiments.InSPEcT_utils import elicit_description_using_inspect_technique, BEST_PATCHES, ALL_LAYER_COMBINATIONS
-import pandas as pd
 import nltk
 from nltk.corpus import stopwords
 from rouge_score import rouge_scorer
@@ -133,8 +131,8 @@ def run(args_list=None):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--inspect_soft_prompts_dir", type=str, default="./inspect_soft_prompts_peft")
-    parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights/DoD_3_5k_peft")
+    parser.add_argument("--inspect_soft_prompts_dir", type=str, default="./inspect_soft_prompts_peft_sample_vocab")
+    parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights/DoD_3_5k_peft_sample_vocab")
     parser.add_argument("--num_tokens", type=int, default=20)
     parser.add_argument("--seed", type=int, default=47)
     parser.add_argument("--peft", action="store_true", help="Use PEFT style way of loading soft prompts")
@@ -193,12 +191,10 @@ def run(args_list=None):
 
 
                 if LOAD_LIKE_PEFT:
-                    print(f"Loading Soft Prompt like peft")
                     soft_prompt = torch.load(soft_prompt_path, map_location = "cpu", weights_only = True)
                     soft_prompt = soft_prompt.unsqueeze(0)                # (1, soft_prompt_len, embed_dim)
 
                 else:
-                    print(f"Performing InSPEcT using soft prompts trained on {dataset_name}")
                     # Load the saved state dict
                     # weights_only=True is a PyTorch security best practice for loading tensors
                     state_dict = torch.load(soft_prompt_path, map_location = "cpu", weights_only = True)
@@ -239,8 +235,8 @@ def run(args_list=None):
 
                     # Print out the scores
                     print(f"Mapper Class Rate: {class_rate:.2f}")
-                    print(f"Mapper Max ROUGE-1: {rouge1:.2f}\n")
-                    print(f"Mapper F1-Score: {f1_score:.2f}\n")
+                    print(f"Mapper Max ROUGE-1: {rouge1:.2f}")
+                    print(f"Mapper F1-Score: {f1_score:.2f}")
                 else:
                     print("Could not map dataset name to InSPEcT benchmarks for Mapper evaluation.\n")
 

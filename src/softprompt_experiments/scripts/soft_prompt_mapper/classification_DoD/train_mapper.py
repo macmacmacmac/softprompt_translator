@@ -72,7 +72,7 @@ def run(args_list=None):
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_tokens", type=int, default=20)
-    parser.add_argument("--mapper_dataset_path", type=str, default="./datasets/mapper_training_dataset/DoD_3_5k_peft")
+    parser.add_argument("--mapper_dataset_path", type=str, default="./datasets/mapper_training_dataset/DoD_3_5k_peft_sample_vocab")
     parser.add_argument("--save_dir", type=str, default="./mapper_lora_weights")
     parser.add_argument("--lora_rank", type=int, default=4)
     parser.add_argument("--lora_dropout", type=float, default=0.1)

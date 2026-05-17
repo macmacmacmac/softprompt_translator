@@ -132,8 +132,8 @@ def run(args_list=None):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--inspect_soft_prompts_dir", type=str, default="./inspect_soft_prompts_custom_random")
-    parser.add_argument("--results_save_dir", type=str, default="./inspect_results/inspect_soft_prompts_custom_random")
+    parser.add_argument("--inspect_soft_prompts_dir", type=str, default="./inspect_soft_prompts_peft_random_16bit")
+    parser.add_argument("--results_save_dir", type=str, default="./inspect_results/inspect_soft_prompts_peft_random_16bit")
     parser.add_argument("--num_tokens", type=int, default=20)
     parser.add_argument("--peft", action="store_true", help="Use PEFT style way of loading soft prompts")
     args, _ = parser.parse_known_args(args_list)
@@ -181,11 +181,9 @@ def run(args_list=None):
                 soft_prompt_path = os.path.join(root, soft_prompt_dir, 'softprompt.pt')
 
                 if LOAD_LIKE_PEFT:
-                    print(f"Loading Soft Prompt like peft")
                     soft_prompt = torch.load(soft_prompt_path, map_location = "cpu", weights_only = True)
 
                 else:
-                    print(f"Performing InSPEcT using soft prompts trained on {dataset_name}")
                     # Load the saved state dict
                     # weights_only=True is a PyTorch security best practice for loading tensors
                     state_dict = torch.load(soft_prompt_path, map_location = "cpu", weights_only = True)
