@@ -21,8 +21,8 @@ def run(args_list=None):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--val_dataset_path", type=str, default="./datasets/mapper_training_dataset/DoD_3_5k_700/val_mapper_dataset.pt")
-    parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights/DoD_3_5k_700")
+    parser.add_argument("--val_dataset_path", type=str, default="./datasets/mapper_training_dataset/DoD_3_5k/val_mapper_dataset.pt")
+    parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights/DoD_3_5k")
     parser.add_argument("--training_stats_path", type=str, default="./trained_soft_prompts/DoD_3_5k/accuracy_stats.csv")
     parser.add_argument("--sample", action='store_true', help="Use a sample of val dataset instead of the full val dataset")
     parser.add_argument("--num_samples", type=int, default=5)
@@ -238,8 +238,10 @@ def run(args_list=None):
 
             tqdm.write("-" * 80)
 
-    # Calculate Avg F1 Score
+    # Calculate Avg F1 Score and Recall
     avg_f1_score = sum(f1_scores)/len(f1_scores)
+    avg_recall = sum(recalls)/len(recalls)
+
 
     # Calculate Pearson Correlation between F1 score and soft prompt validation accuracy
     f1_pcc, f1_p_value = pearsonr(validation_accuracies, f1_scores)
@@ -247,6 +249,7 @@ def run(args_list=None):
     precision_pcc, precision_p_value = pearsonr(validation_accuracies, precisions)
 
     print(f"Avg Mapper F1-Score: {avg_f1_score: 2f}")
+    print(f"Avg Mapper Recall: {avg_recall: 2f}")
     print(f"Mapper F1-Score vs Soft Prompt Val Accuracy PCC: {f1_pcc: 2f} | p-value: {f1_p_value: 2f}")
     print(f"Mapper Recall vs Soft Prompt Val Accuracy PCC: {recall_pcc: 2f} | p-value: {recall_p_value: 2f}")
     print(f"Mapper Precision vs Soft Prompt Val Accuracy PCC: {precision_pcc: 2f} | p-value: {precision_p_value: 2f}")
