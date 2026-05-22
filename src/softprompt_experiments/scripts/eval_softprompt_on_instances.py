@@ -30,7 +30,8 @@ def run(args_list=None):
     parser.add_argument("--num_tokens", type=int, default=20)
     parser.add_argument("--seed", type=int, default=47)
     parser.add_argument("--do-sample", action="store_true", help="Enable sampling decoding")
-    parser.add_argument("--input", type=str, default="./LLM_verbalization.json")
+    parser.add_argument("--input", type=str, default="./LLM_verbalization copy.json")
+    parser.add_argument("--output", type=str, default="./LLM_verbalization_w_soft_preds.json")
     # parser.add_argument("--output", type=str, default="./LLM_verbalization_w_rouge_l")
 
     args, _ = parser.parse_known_args(args_list)
@@ -59,7 +60,7 @@ def run(args_list=None):
     # Load Rouge Metric
     ROUGE_METRIC = evaluate.load("rouge")
     BLEU_METRIC = evaluate.load("sacrebleu")
-    
+
     # ┌───────────────────────────────────────────────┐
     # │                   DATASET PREP                │
     # └───────────────────────────────────────────────┘
@@ -98,6 +99,9 @@ def run(args_list=None):
         data = json.load(f)
     out_df = pd.DataFrame(data)
     out_df['softprompt_rougel'] = -100
+    out_df['softprompt_bleu'] = -100
+
+    print(out_df.head()['instances'])
 
     with torch.no_grad():
         for i in tqdm(range(0, len(test_samples)), desc="Mapping Soft Prompt Batches"):
@@ -155,9 +159,16 @@ def run(args_list=None):
                 instance['pred_soft'] = pred_soft
 
             mean_rouge_l = torch.mean(torch.tensor(rouge_results['rougeL']))
+            mean_bleu = torch.mean(torch.tensor(bleu_results['score']))
+
             out_df.loc[out_df['task_name'] == task_name, 'softprompt_rougel'] = mean_rouge_l.item()
-            out_df.loc[out_df['task_name'] == task_name, 'instances_list'] = instances_list
+            out_df.loc[out_df['task_name'] == task_name, 'softprompt_bleu'] = mean_bleu.item()
+            idx = out_df.index[out_df['task_name'] == task_name][0]
+
+            out_df.at[idx, 'instances'] = instances_list            
             # task_rouge_l = TRAINING_STATS_DF.loc[task_name].get('val_rougeL', 'N/A')
             
 
-    out_df.to_csv(args.output+".csv") #"./LLM_verbalizatoin_w_rouge_l.csv"!\n")
+    out_df.to_json(args.output, orient='records', indent=2) #"./LLM_verbalizatoin_w_rouge_l.csv"!\n")
+
+    # out_df.to_csv(args.output+".csv") #"./LLM_verbalizatoin_w_rouge_l.csv"!\n")

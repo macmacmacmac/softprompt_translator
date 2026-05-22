@@ -44,7 +44,7 @@ def run(args_list=None):
     SEED = args.seed
     DO_SAMPLE = args.do_sample
     # OUTPUT_JSON = args.output_json
-    OUTPUT_JSON = os.path.join(LORA_DIR, "verbalizations.json")
+    OUTPUT_JSON = os.path.join(LORA_DIR, "prefill_verbalizations.json")
 
     # Set the Seed for this experiment
     random.seed(SEED)
@@ -83,6 +83,7 @@ def run(args_list=None):
 
     print(f"Loading base model {MODEL_NAME}...")
     base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
+    llama_word_embeddings = base_model.get_input_embeddings()
 
     print(f"Loading LoRA adapters from {LORA_DIR}...")
     model = PeftModel.from_pretrained(base_model, LORA_DIR)
@@ -109,12 +110,18 @@ def run(args_list=None):
             # Stack soft prompts: (batch_size, seq_len, embed_dim)
             soft_prompts = torch.stack([s["soft_prompt"] for s in batch_samples]).to(DEVICE, dtype=DTYPE)
             
+            prefill_text = "If the text"
+            prefill_ids = tokenizer.encode(prefill_text, return_tensors='pt', add_special_tokens=False).to(DEVICE)
+            prefill_embeds = llama_word_embeddings(prefill_ids)
+            prefill_embeds = prefill_embeds.expand(soft_prompts.shape[0], -1, -1)
+            inputs_embeds = torch.cat([soft_prompts, prefill_embeds], dim=1)
+
             # Create an attention mask for the batch: (batch_size, seq_len)
-            attention_mask = torch.ones(soft_prompts.shape[:2], dtype=torch.long, device=DEVICE)
-            
+            attention_mask = torch.ones(inputs_embeds.shape[:2], dtype=torch.long, device=DEVICE)
+
             # Generate the predicted tokens for the whole batch
             outputs = model.generate(
-                inputs_embeds=soft_prompts,
+                inputs_embeds=inputs_embeds,
                 attention_mask=attention_mask,
                 max_new_tokens=300,
                 do_sample=DO_SAMPLE,
@@ -146,9 +153,9 @@ def run(args_list=None):
                 results_data.append({
                     "task_name": task_name,
                     "hard_prompt": hard_prompts[j],
-                    "verbalization": pred_texts[j],
+                    "prefill_verbalization": pred_texts[j],
                     # "task_rouge_l": task_rouge_l,
-                    "verbalization_rouge_l": rouge_l_scores[j],
+                    "prefill_verbalization_rouge_l": rouge_l_scores[j],
                     "instances": instances_list[j]
                 })
 

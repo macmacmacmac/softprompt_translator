@@ -41,12 +41,14 @@ def run(args_list=None):
     tasks = []
     predicted_hard_prompts = []
     original_hard_prompts = []
+    rougels = []
 
     for item in data:
         # Some verbalizations might be empty or None, ensure they are strings
         predicted = str(item.get("verbalization", "")).strip()
         original = str(item.get("hard_prompt", "")).strip()
-        
+        verbalization_rouge_l = float(item.get("verbalization_rouge_l"))
+        rougels.append(verbalization_rouge_l)
         # Only evaluate items where we have both
         if predicted and original:
             tasks.append(item.get("task_name", "unknown"))

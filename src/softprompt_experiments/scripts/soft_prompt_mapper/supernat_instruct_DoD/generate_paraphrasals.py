@@ -15,7 +15,7 @@ def run(args_list):
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english-filtered")
-    parser.add_argument("--new_dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english-filtered-100x-augmented")
+    parser.add_argument("--new_dataset_path", type=str, default="MacsHuggingFaceAccount/SUPER-NATURALINSTRUCTIONS-english-filtered-10x-augmented-with-features")
     parser.add_argument("--teacher_model", type=str, default="mistralai/Mistral-Small-3.1-24B-Instruct-2503")
     parser.add_argument("--tokenizer_model", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
     parser.add_argument("--num_paraphrasals", type=int, default=100, help="Number of paraphrasals to generate per instruction")
@@ -94,11 +94,12 @@ def run(args_list):
 
     # TODO: Refine this further after spot checking
     system_prompt = (
-        "You are an expert at simplifying and extremely condensing instructions."
-        "Your task is to paraphrase the following instruction into a highly concise statement."
+        "You are an expert at writing prompt instructions."
+        "Your task is to paraphrase the following instruction, stripping away redundant wording while enriching the description to provide specific details while remaining concise."
+        "For instance, if the original instruction is about classifying text, add informative details about specific features to look for."
         "CRITICAL: You MUST explicitly preserve all specific classes, exact tags, labels, output formats, and special syntax constraints. "
         "CRITICAL: Do NOT oversimplify or remove specific mappings between concepts (e.g., specifying which sentence is the premise, exact sentence counts, positional logic, or structural relationships). "
-        "Use a maximum of 3 to 5 short sentences. Strip away ONLY filler words, long narrative examples, and conversational redundant explanations. "
+        "Use AT MOST of 4 to 5 short sentences. Strip away ONLY filler words, long narrative examples, and conversational redundant explanations. "
         "Output ONLY the paraphrased instruction text and absolutely nothing else. Do NOT include phrases like 'Here is the paraphrased version'."
     )
 

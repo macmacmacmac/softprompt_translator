@@ -24,10 +24,10 @@ def run(args_list=None):
     print("=" * 100)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", type=str, default="./LLM_verbalization_w_rouge_l")
+    parser.add_argument("--output", type=str, default="./prefill_verbalizations_all")
     args, _ = parser.parse_known_args(args_list)
 
-    out_df = pd.read_csv(args.output+".csv")
+    out_df = pd.read_json(args.output+".json")
     print(out_df.head())
     # print(f"Saving results to {args.output}.json...")
     # with open(args.output+".json", "w") as f:
@@ -36,12 +36,19 @@ def run(args_list=None):
     # -----------------------------
     # Paired t-test (recommended)
     # -----------------------------
-    llm_scores = out_df['llm_verbalization_rouge_l']
-    soft_scores = out_df['softprompt_rougel']
+    col_name1 = 'prefill_verbalization_rougel'
+    col_name2 = 'fewshot_verbalization_rougel'
+    # col_name3 = 'softprompt_rougel'
 
-    t_stat, p_value = stats.ttest_rel(llm_scores, soft_scores, nan_policy='omit')
+    llm_scores = out_df[col_name1]
+    control_scores = out_df[col_name2]
+    # soft_scores = out_df[col_name3]
 
-    print("\nPaired t-test (llm_verbalization vs soft):")
+    t_stat, p_value = stats.ttest_rel(llm_scores, control_scores, nan_policy='omit')
+
+    print("\nPaired t-test (Mapper verbalization on LLM vs. Control on LLM):")
+    print(f"Mean {col_name1}, {llm_scores.mean()}")
+    print(f"Mean {col_name2}, {control_scores.mean()}")
     print(f"t-statistic: {t_stat:.4f}")
     print(f"p-value: {p_value:.6f}")
 
@@ -49,17 +56,17 @@ def run(args_list=None):
     # -----------------------------
     # Box plot
     # -----------------------------
-    plt.figure(figsize=(6, 5))
+    plt.figure(figsize=(6, 4))
     plt.boxplot(
-        [llm_scores, soft_scores],
-        tick_labels=["LLM verbalization ROUGE-L", "Soft prompt ROUGE-L"]
+        [llm_scores, control_scores],
+        tick_labels=["Prefilled Translation (LLM)", "Fewshot (LLM)"]
     )
 
-    plt.title("ROUGE-L Comparison: LLM Verbalization vs Soft Prompt")
+    plt.title("Comparison of average task performance (ROUGE-L)", fontsize=11)
     plt.ylabel("ROUGE-L Score")
     plt.grid(axis='y', linestyle='--', alpha=0.5)
 
-    plot_path = args.output + "_rouge_l_boxplot.png"
+    plot_path = args.output + "all_rouge_l_boxplot.png"
     plt.tight_layout()
     plt.savefig(plot_path, dpi=300)
     plt.close()

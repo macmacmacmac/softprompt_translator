@@ -1099,6 +1099,8 @@ def eval_softprompt_classification(
     preds = np.array(preds)
     targets = np.array(targets)
 
+    print(preds, targets)
+
     # Metrics
     accuracy = (preds == targets).mean()
 

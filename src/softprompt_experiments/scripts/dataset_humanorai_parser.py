@@ -36,11 +36,14 @@ def run(args_list):
     save_dir = os.path.join(SAVE_DIR, "dataset_0")
 
     df = pd.read_csv("./datasets/human_or_ai_dataset/human_or_ai_dataset.csv")
-    
+    print(len(df))
+    df = df.sample(n=1000)
     # input_sentences = [f"\nSample text: {input_sent}\nAnswer: " for input_sent in df.text.tolist()]
     prefix = "\nSample text:\n\""
     suffix = "...\"\nAnswer:\n"
+    # suffix = "...\"\nType:\n"
     target_sentences = [('AI generated' if target==1 else 'Human written') for target in df.generated.tolist()]
+    # target_sentences = [('type one' if target==1 else 'type two') for target in df.generated.tolist()]
 
     # print(input_sentences[:3])
     # print(target_sentences[:3])

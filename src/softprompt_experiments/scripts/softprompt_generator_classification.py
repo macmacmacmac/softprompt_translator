@@ -32,9 +32,10 @@ def run(args_list):
     parser.add_argument("--init", type=str, default=None)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--epochs", type=int, default=6)
+    parser.add_argument("--lambd", type=float, default=1.)
     parser.add_argument("--num_tokens", type=int, default=8)
     parser.add_argument("--batch_size", type=int, default=16)
-    parser.add_argument("--lambd", type=float, default=1.)
+    parser.add_argument('--class_labels', nargs='+', required=True)    
     parser.add_argument("--no_auto_split",dest="auto_split",action="store_false")
     parser.set_defaults(auto_split=True)
     parser.add_argument("--save_directory", type=str, default="./datasets/math_dataset")
@@ -134,8 +135,8 @@ def run(args_list):
 
         # if verbose: generate sample output predictions using eval_softprompt
         if VERBOSE:
-            outputs = eval_softprompt_classification(softprompt, test_dataset, ["human", "ai"], default="human")
-            print(outputs)
+            print(args.class_labels)
+            outputs = eval_softprompt_classification(softprompt, test_dataset, args.class_labels, default=args.class_labels[0])
             performance = {
                 'hardprompt':hardprompt,
                 'train loss':train_loss,

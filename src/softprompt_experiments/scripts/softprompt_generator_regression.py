@@ -75,8 +75,7 @@ def run(args_list):
     tokenizer.pad_token = tokenizer.eos_token   # Set Padding Token as the EOS Token
 
     # Determine Device and Float Data Type
-    # device = "cuda" if torch.cuda.is_available() else "cpu"
-    device = "cpu"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # dtype = torch.bfloat16 if device == "cuda" else torch.float32
     dtype = torch.bfloat16
@@ -110,7 +109,6 @@ def run(args_list):
 
     # For each individual Dataset
     for dataset_dir in tqdm(dataset_dirs):
-
         # Load the Train and Test Datasets and Dataloaders
         train_dataset, test_dataset, train_loader, test_loader = get_train_test_from_tokenized(
             dataset_dir,
@@ -138,7 +136,20 @@ def run(args_list):
             word_embeddings=word_embeddings, 
             num_tokens=NUM_TOKENS
         )
-        
+
+        if AUTO_SPLIT:
+            hardprompt = torch.load(
+                os.path.join(dataset_dir,'dataset.pt'),
+                weights_only=False
+            )['hardprompt']
+        else:
+            hardprompt = torch.load(
+                os.path.join(dataset_dir,'train_dataset.pt'),
+                weights_only=False
+            )['hardprompt']
+
+        print(f"Training for hardprompt: {hardprompt}")
+
         # Train the Initialized Soft Prompts
         train_loss, test_loss, entropy = train_softprompt_from_tokenized(
             softprompt, 
@@ -151,16 +162,6 @@ def run(args_list):
             entropy_reg_constant=ENTROPY_REG_CONSTANT
         )
 
-        if AUTO_SPLIT:
-            hardprompt = torch.load(
-                os.path.join(dataset_dir,'dataset.pt'),
-                weights_only=False
-            )['hardprompt']
-        else:
-            hardprompt = torch.load(
-                os.path.join(dataset_dir,'train_dataset.pt'),
-                weights_only=False
-            )['hardprompt']
 
 
         # if verbose: generate sample output predictions using eval_softprompt
