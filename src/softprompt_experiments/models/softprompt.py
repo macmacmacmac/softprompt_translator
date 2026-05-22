@@ -223,10 +223,9 @@ class SoftPrompt(nn.Module):
         self.initial_tokens = state_dict['initial_tokens']
         self.initial_embeddings = state_dict['initial_embeddings']
         self.num_tokens = state_dict['num_tokens']
-
-        # TODO: Revert this as this is not a bug anymore, we are supposed to load using SoftPrompt constructor
-        self.prompt_embeddings.data = state_dict['prompt_embeddings'].squeeze(0)
-        # self.prompt_embeddings = nn.Parameter(state_dict['prompt_embeddings'].squeeze(0))
+        
+        # Wrap the tensor of soft prompts into a learnable Parameter
+        self.prompt_embeddings = nn.Parameter(state_dict['prompt_embeddings'].squeeze(0))
 
 
     # NOTE: Unused Code?
