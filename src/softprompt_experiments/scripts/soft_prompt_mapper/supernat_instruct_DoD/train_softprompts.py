@@ -125,17 +125,20 @@ def run(args_list):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--epochs", type=int, default=10)
-    parser.add_argument("--patience", type=int, default=3)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--epochs", type=int, default=20)
+    parser.add_argument("--patience", type=int, default=5)
     parser.add_argument("--min_delta", type=float, default=0.001)
     parser.add_argument("--num_tokens", type=int, default=20)
     parser.add_argument("--max_length", type=int, default=512)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english-filtered")
-    parser.add_argument("--save_dir", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english-filtered")
+    parser.add_argument("--save_dir", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-DoD-test-retrained")
     parser.add_argument("--num_examples", type=int, default=500, help = "num of examples to use per task for training and eval of soft prompts")
     parser.add_argument("--seed", type=int, default=47)
+    parser.add_argument("--train_only_test", action="store_true", help="Consider training only test soft prompts")
+    parser.add_argument("--resume", action="store_true", help="Resume training from existing soft prompts")
+    parser.add_argument("--resume_dir", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english-filtered", help="Directory containing existing soft prompts to load from")
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables
@@ -151,6 +154,9 @@ def run(args_list):
     MIN_DELTA = args.min_delta
     NUM_EXAMPLES = args.num_examples
     SEED = args.seed
+    RESUME = args.resume
+    RESUME_DIR = args.resume_dir
+    TRAIN_ONLY_TEST = args.train_only_test
 
     # Create Directory to save all soft prompts for this Dataset
     os.makedirs(SAVE_DIR, exist_ok=True)
@@ -182,9 +188,15 @@ def run(args_list):
     print(f"Loading dataset from {DATASET_PATH}...")
     hf_ds = load_dataset(DATASET_PATH)
 
-    # Combine splits to get all tasks and their respective instances across the dataset
-    splits_to_concat = [hf_ds[split] for split in hf_ds.keys()]
-    full_ds = concatenate_datasets(splits_to_concat)
+
+    if TRAIN_ONLY_TEST:
+        # Use only the test split
+        full_ds = hf_ds["test"]
+
+    else:
+        # Combine splits to get all tasks and their respective instances across the dataset
+        splits_to_concat = [hf_ds[split] for split in hf_ds.keys()]
+        full_ds = concatenate_datasets(splits_to_concat)
     
     # Convert to pandas for grouping instances by task efficiently without .filter() iteration
     full_df = full_ds.to_pandas()
@@ -279,6 +291,14 @@ def run(args_list):
             word_embeddings=llama_word_embeddings,
             num_tokens=NUM_TOKENS
         ).to(DEVICE)
+
+        if RESUME and RESUME_DIR:
+            old_softprompt_path = os.path.join(RESUME_DIR, task_name)
+            if os.path.exists(os.path.join(old_softprompt_path, "softprompt.pt")):
+                tqdm.write(f"Resuming training for {task_name}, loading soft prompt from {old_softprompt_path}")
+                soft_prompt.load_softprompt(os.path.join(old_softprompt_path, "softprompt.pt"))
+            else:
+                tqdm.write(f"No existing soft prompt found at {old_softprompt_path}, initializing from scratch for {task_name}.")
 
         # Init Optimizer with only params from Soft Prompt
         optimizer = torch.optim.AdamW(soft_prompt.parameters(), lr=LR)
