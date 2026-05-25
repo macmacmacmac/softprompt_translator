@@ -19,3 +19,8 @@ python -m run_experiment --scripts dataset_math_custom softprompt_generator_regr
 ```
 
 This will build the dataset, train the soft prompts, and generate verbalizations. In that order.
+
+## Scripts for Classification DoD
+
+
+## Scripts for General DoD
