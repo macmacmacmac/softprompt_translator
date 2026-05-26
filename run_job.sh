@@ -2,13 +2,13 @@
 #SBATCH -N 1
 #SBATCH -n 8
 #SBATCH --mem=16g
-#SBATCH -J "DoD2"
+#SBATCH -J "permutation"
 #SBATCH -p short
 #SBATCH -t 1-00:00:00
 #SBATCH --gres=gpu:1
 #SBATCH -C A100
-#SBATCH -o dod2.out
-#SBATCH -e dod2.out
+#SBATCH -o permutation.out
+#SBATCH -e permutation.out
 
 # -----------------------------
 # Load Required Modules
@@ -39,5 +39,5 @@ export PYTORCH_ALLOC_CONF=expandable_segments:True
 # -----------------------------
 # python -u -m run_experiment --scripts soft_prompt_mapper.supernat_instruct_DoD.train_softprompts --resume --train_only_test
 # python -u -m run_experiment --scripts soft_prompt_mapper.supernat_instruct_DoD.apply_InSPEcT_on_DoD --peft
-# python -u -m run_experiment --scripts soft_prompt_mapper.supernat_instruct_DoD.generate_paraphrasals
-python -u -m run_experiment --scripts soft_prompt_mapper.classification_DoD.inference_mapper_dataset
+python -u -m run_experiment --scripts soft_prompt_mapper.classification_DoD.permutation_experiment
+# python -u -m run_experiment --scripts soft_prompt_mapper.classification_DoD.inference_mapper_dataset
