@@ -125,20 +125,22 @@ def run(args_list):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--epochs", type=int, default=20)
-    parser.add_argument("--patience", type=int, default=5)
+    parser.add_argument("--patience", type=int, default=3)
     parser.add_argument("--min_delta", type=float, default=0.001)
-    parser.add_argument("--num_tokens", type=int, default=20)
+    parser.add_argument("--num_tokens", type=int, default=30)
     parser.add_argument("--max_length", type=int, default=512)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english-filtered")
-    parser.add_argument("--save_dir", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-DoD-test-retrained")
+    parser.add_argument("--save_dir", type=str, default="./trained_soft_prompts/SuperNatural-30-tokens")
     parser.add_argument("--num_examples", type=int, default=500, help = "num of examples to use per task for training and eval of soft prompts")
     parser.add_argument("--seed", type=int, default=47)
     parser.add_argument("--train_only_test", action="store_true", help="Consider training only test soft prompts")
     parser.add_argument("--resume", action="store_true", help="Resume training from existing soft prompts")
     parser.add_argument("--resume_dir", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english-filtered", help="Directory containing existing soft prompts to load from")
+    parser.add_argument("--start_percent", type=float, default=0.0, help="Starting percentage of tasks to process (0-100)")
+    parser.add_argument("--run_percent", type=float, default=100.0, help="Percentage of tasks to process (0-100)")
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables
@@ -157,6 +159,8 @@ def run(args_list):
     RESUME = args.resume
     RESUME_DIR = args.resume_dir
     TRAIN_ONLY_TEST = args.train_only_test
+    START_PERCENT = args.start_percent
+    RUN_PERCENT = args.run_percent
 
     # Create Directory to save all soft prompts for this Dataset
     os.makedirs(SAVE_DIR, exist_ok=True)
@@ -203,14 +207,22 @@ def run(args_list):
     grouped_tasks = full_df.groupby('task_name')
 
     # Get all unique tasks
-    unique_tasks = list(grouped_tasks.groups.keys())
-    print(f"Found {len(unique_tasks)} unique training tasks to process.")
+    unique_tasks = sorted(list(grouped_tasks.groups.keys()))
+    print(f"Found {len(unique_tasks)} total unique tasks in dataset.")
+
+    # Slice the tasks based on percentage parameters
+    start_idx = int((START_PERCENT / 100.0) * len(unique_tasks))
+    end_percent = min(100.0, START_PERCENT + RUN_PERCENT)
+    end_idx = int((end_percent / 100.0) * len(unique_tasks))
+    
+    unique_tasks = unique_tasks[start_idx:end_idx]
+    print(f"Processing tasks {start_idx} to {end_idx - 1} (Total: {len(unique_tasks)}) based on start: {START_PERCENT}% and run: {RUN_PERCENT}%")
     
     # Init Dataset Progress Bar
     dataset_pbar = tqdm(unique_tasks, desc="Master Task Progress")
 
-    # Init file path for training stats
-    TRAINING_STATS_FILE_PATH = f"{SAVE_DIR}/training_stats.csv"
+    # Init file path for training stats (unique per split to avoid parallel write collisions)
+    TRAINING_STATS_FILE_PATH = f"{SAVE_DIR}/training_stats_{START_PERCENT}_{RUN_PERCENT}.csv"
 
     # Preload existing training_stats, if it exists already
     if os.path.isfile(TRAINING_STATS_FILE_PATH):
