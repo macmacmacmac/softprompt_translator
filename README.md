@@ -10,6 +10,36 @@ source .venv/bin/activate
 pip install -r requirements.txt -e .
 ```
 
+## Project Directory Structure Overview
+This overview is mostly for relevant scripts for the Paper: `Learning to Translate from Soft to Hard LLM Prompts`:
+```bash
+├── datasets <-- Stores Datasets
+├── inspect_results  <-- Stores InSPEcT results   
+├── mapper_lora_weights <-- Stores trained LoRA Adapters for different Translators
+├── pyproject.toml
+├── README.md
+├── requirements.txt
+├── run_experiment.py <-- Driver Script
+src/
+└── softprompt_experiments
+    ├── __init__.py
+    ├── InSPEcT_utils.py <-- Util Code for InSPEcT Experiments
+    ├── models
+    │   ├── __init__.py
+    |   | ...
+    │   ├── softprompt.py <-- CUSTOM SOFT PROMPT IMPLEMENTATION
+    │   | ...
+    ├── scripts
+    │   ├── soft_prompt_mapper
+    │   │   ├── classification_DoD <-- Scripts for Classification DoD Experiments
+    │   │   ├── __init__.py
+    │   │   └── supernat_instruct_DoD <-- Script for General DoD Experiments
+    └── ...
+├── trained_soft_prompts <-- Contains Trained Soft prompts
+...
+```
+
+
 ## Command for reproducing experiments
 Example Usage 
 ```bash
@@ -34,7 +64,13 @@ python -m run_experiment --scripts soft_prompt_mapper.supernat_instruct_DoD.trai
 When running the scripts one by one using the previous command, please ensure that the output directory in the script argument matches the input directory of the next script's argument. For example:
 `soft_prompt_mapper.supernat_instruct_DoD.train_softprompts` might save soft prompts trained under directory: `./trained_soft_prompts/General-DoD` (using argument `--save_dir`). So the `--trained_soft_prompts_dir` argument of script `soft_prompt_mapper.supernat_instruct_DoD.compile_mapper_dataset` should be `./trained_soft_prompts/General-DoD`.
 
-## Misc
-All our scripts use the word 'mapper' interchangeably with 'translator'
+
+
+
+
+
+## Important Notes
+- All our scripts use the word 'mapper' interchangeably with 'translator'
+- InSPEcT Implementation is inspired by code from [this repository](https://github.com/danaramati1/InSPEcT).
 
 
