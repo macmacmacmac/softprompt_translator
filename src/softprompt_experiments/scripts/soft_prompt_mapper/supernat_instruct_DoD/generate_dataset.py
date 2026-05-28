@@ -125,4 +125,4 @@ def run(args_list):
 
     # Push to HF Hub
     suffix = "english" if ENGLISH_ONLY else "xlingual"
-    hf_dataset_dict.push_to_hub(f"Suryanshg/SUPER-NATURALINSTRUCTIONS-{suffix}")
+    hf_dataset_dict.push_to_hub(f"SoftPromptTranslator/SUPER-NATURALINSTRUCTIONS-{suffix}")

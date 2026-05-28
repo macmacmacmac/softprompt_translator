@@ -132,15 +132,15 @@ def run(args_list):
     parser.add_argument("--num_tokens", type=int, default=30)
     parser.add_argument("--max_length", type=int, default=512)
     parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english-filtered")
-    parser.add_argument("--save_dir", type=str, default="./trained_soft_prompts/SuperNatural-30-tokens")
+    parser.add_argument("--dataset_path", type=str, default="SoftPromptTranslator/SUPER-NATURALINSTRUCTIONS-english-filtered")
+    parser.add_argument("--save_dir", type=str, default="./trained_soft_prompts/General-DoD")
     parser.add_argument("--num_examples", type=int, default=500, help = "num of examples to use per task for training and eval of soft prompts")
     parser.add_argument("--seed", type=int, default=47)
     parser.add_argument("--train_only_test", action="store_true", help="Consider training only test soft prompts")
     parser.add_argument("--resume", action="store_true", help="Resume training from existing soft prompts")
-    parser.add_argument("--resume_dir", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english-filtered", help="Directory containing existing soft prompts to load from")
     parser.add_argument("--start_percent", type=float, default=0.0, help="Starting percentage of tasks to process (0-100)")
     parser.add_argument("--run_percent", type=float, default=100.0, help="Percentage of tasks to process (0-100)")
+    parser.add_argument("--resume_dir", type=str, default="./trained_soft_prompts/General-DoD", help="Directory containing existing soft prompts to load from")
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables

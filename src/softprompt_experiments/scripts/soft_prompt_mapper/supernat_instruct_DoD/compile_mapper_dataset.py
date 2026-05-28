@@ -8,8 +8,7 @@ import random
 
 
 def compile_data_list(dataset_records: List[Dict[str, Any]], 
-                      trained_soft_prompts_dir: str, 
-                      dataset_name: str) -> List[Dict]:
+                      trained_soft_prompts_dir: str) -> List[Dict]:
 
     compiled_data = []
     missing_count = 0
@@ -22,7 +21,6 @@ def compile_data_list(dataset_records: List[Dict[str, Any]],
 
         # Unpack task_name and hard_prompt
         task_name = task_map['task_name']
-        # hard_prompt = task_map['reduced_instructions']
         hard_prompt = task_map['instruction']
         instances = task_map['instances']
 
@@ -80,10 +78,10 @@ def run(args_list):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english-filtered-10x-augmented-enriched")
-    parser.add_argument("--trained_soft_prompts_dir", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english-filtered")
-    parser.add_argument("--compiled_dataset_dir", type=str, default="./datasets/mapper_training_dataset")
-    parser.add_argument("--num_instances", type=int, default=10)
+    parser.add_argument("--dataset_path", type=str, default="SoftPromptTranslator/SUPER-NATURALINSTRUCTIONS-english-filtered")
+    parser.add_argument("--trained_soft_prompts_dir", type=str, default="./trained_soft_prompts/General-DoD")
+    parser.add_argument("--compiled_dataset_dir", type=str, default="./datasets/mapper_training_dataset/General-DoD")
+    parser.add_argument("--num_instances", type=int, default=10, help="Number of instances to save per compiled dataset for mapper training")
     parser.add_argument("--seed", type=int, default=47)
     args, _ = parser.parse_known_args(args_list)
 
@@ -94,39 +92,26 @@ def run(args_list):
     NUM_INSTANCES = args.num_instances
     SEED = args.seed
 
-    # Determine Dataset Name
-    DATASET_NAME = DATASET_PATH.split('/')[-1]
-
     # Fetch all hard prompts from Hugging Face Dataset
-    hf_dataset = load_dataset(DATASET_PATH).select_columns(['task_name', 'instruction', 'paraphrased_instructions', 'input', 'output'])
+    hf_dataset = load_dataset(DATASET_PATH).select_columns(['task_name', 'instruction','reduced_instructions', 'input', 'output'])
     
     # Convert to Pandas
     train_dataset_df = hf_dataset['train'].to_pandas()
     test_dataset_df = hf_dataset['test'].to_pandas()
 
     # Add instruction field to paraphrased_instructions for train_df
-    # train_dataset_df['paraphrased_instructions'] = train_dataset_df.apply(
-    #     lambda row: list(row['paraphrased_instructions']) + [row['instruction']],
-    #     axis=1 # Apply row by row
-    # )
-
-
-    # # Pick only 1 augmentation hard Prompt
-    # # Sample 1 reduced_instruction per task_name
-    # sampled_instructions = train_dataset_df.groupby('task_name')['reduced_instructions'].first().apply(
-    #     lambda row: random.sample(list(row), 1)
-    # )
-    
-    # # Map the chosen sampled instruction back to all rows of the corresponding task
-    # train_dataset_df['reduced_instructions'] = train_dataset_df['task_name'].map(sampled_instructions)
+    train_dataset_df['reduced_instructions'] = train_dataset_df.apply(
+        lambda row: list(row['reduced_instructions']) + [row['instruction']],
+        axis=1 # Apply row by row
+    )
     
     # Drop the instruction column in train_df and reduced_instructions in test_df
     train_dataset_df = train_dataset_df.drop(columns=['instruction'], axis=1)
-    test_dataset_df = test_dataset_df.drop(columns=['paraphrased_instructions'], axis=1)
+    test_dataset_df = test_dataset_df.drop(columns=['reduced_instructions'], axis=1)
 
-    # Explode the reduced instructions for train_df and rename to instructions
-    train_dataset_df = train_dataset_df.explode('paraphrased_instructions').rename(columns={
-        'paraphrased_instructions': 'instruction'
+    # Explode (unwind) the reduced instructions for train_df and rename column to 'instruction'
+    train_dataset_df = train_dataset_df.explode('reduced_instructions').rename(columns={
+        'reduced_instructions': 'instruction'
     })
 
     # Group by task and instruction, and take the first NUM_INSTANCE rows from each group
@@ -151,20 +136,18 @@ def run(args_list):
     print(f"Found {len(test_dataset_records)} hard prompts in testing dataset")
 
     # Get Compiled Data for train and test sets
-    train_compiled_data = compile_data_list(train_dataset_records, TRAINED_SOFT_PROMPTS_DIR, DATASET_NAME)
-    test_compiled_data = compile_data_list(test_dataset_records, TRAINED_SOFT_PROMPTS_DIR, DATASET_NAME)
+    train_compiled_data = compile_data_list(train_dataset_records, TRAINED_SOFT_PROMPTS_DIR)
+    test_compiled_data = compile_data_list(test_dataset_records, TRAINED_SOFT_PROMPTS_DIR)
 
     # Save the Compiled Data List to a Torch File
     print(f"\nCompilation Complete! Successfully paired: {len(train_compiled_data)} train datasets and {len(test_compiled_data)} test datasets.")
 
     # Create the Directory for saving the datasets
-    # save_dir = os.path.join(COMPILED_DATASET_DIR, DATASET_NAME)
-    save_dir = os.path.join(COMPILED_DATASET_DIR, DATASET_NAME)
-    os.makedirs(save_dir, exist_ok=True)
+    os.makedirs(COMPILED_DATASET_DIR, exist_ok=True)
     
     # Save the Training and Validation Datasets
-    train_dataset_path = os.path.join(save_dir, 'train_mapper_dataset.pt')
-    val_dataset_path = os.path.join(save_dir, 'val_mapper_dataset.pt')
+    train_dataset_path = os.path.join(COMPILED_DATASET_DIR, 'train_mapper_dataset.pt')
+    val_dataset_path = os.path.join(COMPILED_DATASET_DIR, 'val_mapper_dataset.pt')
     
     torch.save(train_compiled_data, train_dataset_path)
     torch.save(test_compiled_data, val_dataset_path)

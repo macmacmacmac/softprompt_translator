@@ -20,9 +20,10 @@ def run(args_list=None):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--proportion_to_use", type=float, default=1.0)
-    parser.add_argument("--mapper_dataset_path", type=str, default="./datasets/mapper_training_dataset/supnat_eng_fil_orig/")
+    parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
+    parser.add_argument("--mapper_dataset_path", type=str, default="./datasets/mapper_training_dataset/General-DoD")
     parser.add_argument("--sample", action='store_true', help="Use a sample of val dataset instead of the full val dataset")
+    parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights/General-DoD")
     parser.add_argument("--num_samples", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_tokens", type=int, default=20)
@@ -31,15 +32,14 @@ def run(args_list=None):
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables
-    PROPORTION_FOLDER = f"{int(100 * args.proportion_to_use)}_percent"
-    MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
+    MODEL_NAME = args.model_name
     VAL_DATASET_PATH = os.path.join(args.mapper_dataset_path, "val_mapper_dataset.pt")
-    LORA_DIR = os.path.join(args.mapper_dataset_path, "mapper_lora_weights", PROPORTION_FOLDER)
+    LORA_DIR = os.path.join(args.lora_dir, args.model_name)
     BATCH_SIZE = args.batch_size
     NUM_SAMPLES = args.num_samples
     SEED = args.seed
     DO_SAMPLE = args.do_sample
-    OUTPUT_JSON = os.path.join(LORA_DIR, "verbalizations.json")
+    OUTPUT_JSON_PATH = os.path.join(LORA_DIR, "verbalizations.json")
 
     # Set the Seed for this experiment
     random.seed(SEED)
@@ -143,7 +143,7 @@ def run(args_list=None):
                 })
 
     # Save to JSON
-    print(f"\nSaving results to {OUTPUT_JSON}...")
-    with open(OUTPUT_JSON, "w") as f:
+    print(f"\nSaving results to {OUTPUT_JSON_PATH}...")
+    with open(OUTPUT_JSON_PATH, "w") as f:
         json.dump(results_data, f, indent=4)
     print("Done!\n")

@@ -14,7 +14,7 @@ def run(args_list):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english")
+    parser.add_argument("--dataset_path", type=str, default="SoftPromptTranslatorSUPER-NATURALINSTRUCTIONS-english")
     parser.add_argument("--teacher_model", type=str, default="mistralai/Mistral-Small-3.1-24B-Instruct-2503")
     parser.add_argument("--tokenizer_model", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
     parser.add_argument("--token_threshold", type=int, default=400, help="Max tokens allowed for input + output sentences; if higher, we filter them out")

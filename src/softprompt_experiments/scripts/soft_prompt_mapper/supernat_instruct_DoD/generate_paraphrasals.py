@@ -14,8 +14,8 @@ def run(args_list):
     print("="*100, f"\n\t\t\tRunning script: {exp_name}\n", "="*100, "\n")
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english-filtered")
-    parser.add_argument("--new_dataset_path", type=str, default="Suryanshg/SUPER-NATURALINSTRUCTIONS-english-filtered-10x-augmented-enriched")
+    parser.add_argument("--dataset_path", type=str, default="SoftPromptTranslator/SUPER-NATURALINSTRUCTIONS-english-filtered")
+    parser.add_argument("--new_dataset_path", type=str, default="SoftPromptTranslator/SUPER-NATURALINSTRUCTIONS-english-filtered-10x-augmented-enriched")
     parser.add_argument("--teacher_model", type=str, default="mistralai/Mistral-Small-3.1-24B-Instruct-2503")
     parser.add_argument("--tokenizer_model", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
     parser.add_argument("--num_paraphrasals", type=int, default=10, help="Number of paraphrasals to generate per instruction")
