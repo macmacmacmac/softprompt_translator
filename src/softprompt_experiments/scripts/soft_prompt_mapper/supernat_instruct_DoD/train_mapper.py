@@ -6,6 +6,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import LoraConfig, get_peft_model, TaskType
 from tqdm import tqdm
 import evaluate
+import ipdb
 
 # PyTorch Dataset wrapper on the Mapper Dataset from Soft Prompts to Hard Prompts
 class MapperDataset(Dataset):
@@ -100,6 +101,7 @@ def run(args_list=None):
 
     # Determine DEVICE and DTYPE
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    # DEVICE = "cpu"
     DTYPE = torch.bfloat16 if DEVICE == "cuda" else torch.float32
 
     # Load Tokenizer

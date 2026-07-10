@@ -8,7 +8,7 @@ from tqdm import tqdm
 import pandas as pd
 from datasets import load_dataset, concatenate_datasets
 import evaluate
-
+import ipdb
 
 class TaskDataset(Dataset):
     def __init__(self, data_rows):
@@ -50,7 +50,8 @@ class CausalLMBatchCollator:
         inputs, targets = zip(*batch)
         
         # Combine input and target into the full sequence the model needs to see
-        full_texts = [f"{inp}{tgt}" for inp, tgt in zip(inputs, targets)]
+        # full_texts = [f"{inp}{tgt}" for inp, tgt in zip(inputs, targets)]
+        full_texts = [f"{inp}{tgt}{self.tokenizer.eos_token}" for inp, tgt in zip(inputs, targets)]
         
         # Tokenize the full sequences (this gives us input_ids and attention_mask)
         tokenized = self.tokenizer(
@@ -79,6 +80,8 @@ class CausalLMBatchCollator:
 
             # Mask any padding tokens added to the end of the sequence
             labels[i, attention_mask[i] == 0] = -100
+
+            ipdb.set_trace()
 
         # Account for Soft Prompt in labels
         # Because we will prepend `soft_prompt_length` virtual embeddings to the front
@@ -125,7 +128,7 @@ def run(args_list):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--patience", type=int, default=3)
     parser.add_argument("--min_delta", type=float, default=0.001)
@@ -133,7 +136,7 @@ def run(args_list):
     parser.add_argument("--max_length", type=int, default=512)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--dataset_path", type=str, default="SoftPromptTranslator/SUPER-NATURALINSTRUCTIONS-english-filtered")
-    parser.add_argument("--save_dir", type=str, default="./trained_soft_prompts/General-DoD")
+    parser.add_argument("--save_dir", type=str, default="./trained_soft_prompts/General-DoD-test")
     parser.add_argument("--num_examples", type=int, default=500, help = "num of examples to use per task for training and eval of soft prompts")
     parser.add_argument("--seed", type=int, default=47)
     parser.add_argument("--train_only_test", action="store_true", help="Consider training only test soft prompts")
@@ -452,7 +455,7 @@ def run(args_list):
                 
                 # Save a copy of the best weights in memory
                 best_soft_prompt_state = {k: v.cpu().clone() for k, v in soft_prompt.state_dict().items()}
-                tqdm.write(f"  --> Validation loss improved! Saving current state.")
+                tqdm.write("  --> Validation loss improved! Saving current state.")
             else:
                 epochs_no_improve += 1
                 tqdm.write(f"  --> No improvement. Patience: {epochs_no_improve}/{PATIENCE}")
