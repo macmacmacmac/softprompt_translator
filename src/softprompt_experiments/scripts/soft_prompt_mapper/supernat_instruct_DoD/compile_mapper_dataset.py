@@ -93,26 +93,32 @@ def run(args_list):
     SEED = args.seed
 
     # Fetch all hard prompts from Hugging Face Dataset
-    hf_dataset = load_dataset(DATASET_PATH).select_columns(['task_name', 'instruction','reduced_instructions', 'input', 'output'])
+    hf_dataset = load_dataset(DATASET_PATH).select_columns([
+        'task_name', 
+        'instruction',
+        # 'reduced_instructions',
+        'input', 
+        'output'
+    ])
     
     # Convert to Pandas
     train_dataset_df = hf_dataset['train'].to_pandas()
     test_dataset_df = hf_dataset['test'].to_pandas()
 
     # Add instruction field to paraphrased_instructions for train_df
-    train_dataset_df['reduced_instructions'] = train_dataset_df.apply(
-        lambda row: list(row['reduced_instructions']) + [row['instruction']],
-        axis=1 # Apply row by row
-    )
+    # train_dataset_df['reduced_instructions'] = train_dataset_df.apply(
+    #     lambda row: list(row['reduced_instructions']) + [row['instruction']],
+    #     axis=1 # Apply row by row
+    # )
     
     # Drop the instruction column in train_df and reduced_instructions in test_df
-    train_dataset_df = train_dataset_df.drop(columns=['instruction'], axis=1)
-    test_dataset_df = test_dataset_df.drop(columns=['reduced_instructions'], axis=1)
+    # train_dataset_df = train_dataset_df.drop(columns=['instruction'], axis=1)
+    # test_dataset_df = test_dataset_df.drop(columns=['reduced_instructions'], axis=1)
 
     # Explode (unwind) the reduced instructions for train_df and rename column to 'instruction'
-    train_dataset_df = train_dataset_df.explode('reduced_instructions').rename(columns={
-        'reduced_instructions': 'instruction'
-    })
+    # train_dataset_df = train_dataset_df.explode('reduced_instructions').rename(columns={
+    #     'reduced_instructions': 'instruction'
+    # })
 
     # Group by task and instruction, and take the first NUM_INSTANCE rows from each group
     train_dataset_df = train_dataset_df.groupby(['task_name', 'instruction']).head(NUM_INSTANCES).reset_index(drop=True)
@@ -141,6 +147,7 @@ def run(args_list):
 
     # Save the Compiled Data List to a Torch File
     print(f"\nCompilation Complete! Successfully paired: {len(train_compiled_data)} train datasets and {len(test_compiled_data)} test datasets.")
+    # print(f"\nCompilation Complete! Successfully paired: {len(test_compiled_data)} test datasets.")
 
     # Create the Directory for saving the datasets
     os.makedirs(COMPILED_DATASET_DIR, exist_ok=True)

@@ -8,7 +8,7 @@ from tqdm import tqdm
 import pandas as pd
 from datasets import load_dataset, concatenate_datasets
 import evaluate
-
+import ipdb
 
 class TaskDataset(Dataset):
     def __init__(self, data_rows):
@@ -50,7 +50,8 @@ class CausalLMBatchCollator:
         inputs, targets = zip(*batch)
         
         # Combine input and target into the full sequence the model needs to see
-        full_texts = [f"{inp}{tgt}" for inp, tgt in zip(inputs, targets)]
+        # Append EOS so the soft prompt is supervised to stop generation after the answer
+        full_texts = [f"{inp}{tgt}{self.tokenizer.eos_token}" for inp, tgt in zip(inputs, targets)]
         
         # Tokenize the full sequences (this gives us input_ids and attention_mask)
         tokenized = self.tokenizer(
@@ -88,15 +89,19 @@ class CausalLMBatchCollator:
         soft_prompt_labels = torch.full((batch_size, self.soft_prompt_length), -100, dtype=torch.long)  # (batch_size, soft_prompt_len)
         labels = torch.cat([soft_prompt_labels, labels], dim=1)                                         # (batch_size, soft_prompt_len + seq_len)
         
-        # Because SUPER-NATURALINSTRUCTIONS DoD requires open ended generation, we need to 
+        # Because SUPER-NATURALINSTRUCTIONS DoD requires open ended generation, we need to
         # also prep just the input sequence for doing evaluations after training
+        # Batched generate() reads logits from the last column of the batch, so this
+        # must be left-padded -- otherwise short rows predict their first generated
+        # token from a pad-token position instead of their true last prompt token.
         input_tokenized = self.tokenizer(
             list(inputs),
             padding=True,
             truncation=True,
             max_length=self.max_length,
             return_tensors="pt",
-            add_special_tokens=True
+            add_special_tokens=True,
+            padding_side="left"
         )
 
         return {
@@ -125,7 +130,7 @@ def run(args_list):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--patience", type=int, default=3)
     parser.add_argument("--min_delta", type=float, default=0.001)
@@ -268,6 +273,12 @@ def run(args_list):
 
         # Get task-specific max length dynamically from the dataframe (fallback to MAX_LENGTH if missing)
         task_max_length = int(task_df['total_tokens'].max()) if 'total_tokens' in task_df.columns else MAX_LENGTH
+
+        # Cap validation generation by the longest target for this task (+ slack for EOS),
+        # rather than task_max_length (which bounds input+output, not just output)
+        task_max_new_tokens = max(
+            len(llama_tokenizer.encode(t, add_special_tokens=False)) for t in val_dataset.targets
+        ) + 10
 
         # Init Collator
         collator = CausalLMBatchCollator(
@@ -416,9 +427,9 @@ def run(args_list):
                     generated_ids = llama_model.generate(
                         inputs_embeds=input_only_inputs_embeds,
                         attention_mask=input_only_full_attention_mask,
-                        max_new_tokens=task_max_length,
-                        pad_token_id=llama_tokenizer.eos_token_id,
-                        eos_token_id=llama_tokenizer.eos_token_id
+                        max_new_tokens=task_max_new_tokens,
+                        do_sample=False,
+                        pad_token_id=llama_tokenizer.eos_token_id
                     )
                     
                     decoded_preds = llama_tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
@@ -452,7 +463,7 @@ def run(args_list):
                 
                 # Save a copy of the best weights in memory
                 best_soft_prompt_state = {k: v.cpu().clone() for k, v in soft_prompt.state_dict().items()}
-                tqdm.write(f"  --> Validation loss improved! Saving current state.")
+                tqdm.write("  --> Validation loss improved! Saving current state.")
             else:
                 epochs_no_improve += 1
                 tqdm.write(f"  --> No improvement. Patience: {epochs_no_improve}/{PATIENCE}")

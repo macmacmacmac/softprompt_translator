@@ -35,3 +35,7 @@ visualizations/
 
 # Allow ipython notebooks (used for EDA)
 !*.ipynb
+
+
+!verbalizations/.gitkeep
+!verbalizations/master_verbalizations.json
