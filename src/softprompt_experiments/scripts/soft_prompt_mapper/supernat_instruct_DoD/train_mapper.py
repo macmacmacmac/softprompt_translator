@@ -50,7 +50,13 @@ class MapperCollator:
         
         input_ids = tokenized["input_ids"]              # (batch_size, seq_len)
         attention_mask = tokenized["attention_mask"]    # (batch_size, seq_len)
-        
+
+        # Truncation can cut off the appended EOS for prompts longer than max_length;
+        # force the last attended token to EOS so every sequence keeps a supervised
+        # stop signal (no-op for non-truncated rows, whose last token is already EOS)
+        last_positions = attention_mask.sum(dim=1) - 1                              # (batch_size,)
+        input_ids[torch.arange(input_ids.size(0)), last_positions] = self.tokenizer.eos_token_id
+
         # Create labels and mask the padding tokens with -100
         labels = input_ids.clone()                      # (batch_size, seq_len)
         labels[attention_mask == 0] = -100              # (batch_size, seq_len)
@@ -160,9 +166,9 @@ def run(args_list=None):
 
     # Init Training Dataloader
     train_dataloader = DataLoader(
-        MapperDataset(train_dataset), 
-        batch_size=BATCH_SIZE, 
-        shuffle=False, 
+        MapperDataset(train_dataset),
+        batch_size=BATCH_SIZE,
+        shuffle=True,
         collate_fn=collator
     )
 
@@ -240,10 +246,19 @@ def run(args_list=None):
             # Get the predicted token ids
             preds = torch.argmax(shifted_logits, dim = -1)
 
+            # Positions with label -100 (soft prompt + padding) carry no supervision;
+            # mask the preds there too, else junk tokens leak into the decoded strings
+            valid_positions = shifted_labels != -100
+            preds = torch.where(
+                valid_positions, 
+                preds, 
+                tokenizer.pad_token_id
+            )
+
             # Replace -100 in the labels as we can't decode -100
             shifted_labels = torch.where(
-                shifted_labels != -100, 
-                shifted_labels, 
+                valid_positions,
+                shifted_labels,
                 tokenizer.pad_token_id
             )
 
@@ -320,10 +335,19 @@ def run(args_list=None):
                 # Get the predicted token ids
                 preds = torch.argmax(shifted_logits, dim = -1)
 
+                # Positions with label -100 (soft prompt + padding) carry no supervision;
+                # mask the preds there too, else junk tokens leak into the decoded strings
+                valid_positions = shifted_labels != -100
+                preds = torch.where(
+                    valid_positions, 
+                    preds, 
+                    tokenizer.pad_token_id
+                )
+
                 # Replace -100 in the labels as we can't decode -100
                 shifted_labels = torch.where(
-                    shifted_labels != -100, 
-                    shifted_labels, 
+                    valid_positions,
+                    shifted_labels,
                     tokenizer.pad_token_id
                 )
 
