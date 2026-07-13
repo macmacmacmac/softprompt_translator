@@ -138,7 +138,7 @@ def run(args_list):
     parser.add_argument("--max_length", type=int, default=512)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--dataset_path", type=str, default="SoftPromptTranslator/SUPER-NATURALINSTRUCTIONS-english-filtered")
-    parser.add_argument("--save_dir", type=str, default="./trained_soft_prompts/General-DoD-test")
+    parser.add_argument("--save_dir", type=str, default="./trained_soft_prompts/General-DoD")
     parser.add_argument("--num_examples", type=int, default=500, help = "num of examples to use per task for training and eval of soft prompts")
     parser.add_argument("--seed", type=int, default=47)
     parser.add_argument("--train_only_test", action="store_true", help="Consider training only test soft prompts")
