@@ -1,0 +1,71 @@
+[
+    {
+        "dataset": "sst2",
+        "classes": [
+            "positive",
+            "negative"
+        ],
+        "mapper_verbalization": "1) positive, 2) negative. The input consists of movie reviews. Use the first sentence as the premise.",
+        "mapper_class_rate": 1.0,
+        "mapper_f1": 0.23529411764705882,
+        "soft_prompt_accuracy": 0.9632,
+        "rl_prompt_verbalization": "ContentAssetDebugIcon downright"
+    },
+    {
+        "dataset": "TREC-QC",
+        "classes": [
+            "description",
+            "entity",
+            "abbreviation",
+            "human",
+            "location",
+            "number"
+        ],
+        "mapper_verbalization": "\"description\", \"entailment\", \"convention\". Use \"description\" for the abstract meaning of a word. Use \"entailment\" for the relationship between two phrases. Use \"convention\" for shared knowledge.",
+        "mapper_class_rate": 0.16666666666666666,
+        "mapper_f1": 0.08695652173913045,
+        "soft_prompt_accuracy": 0.97,
+        "rl_prompt_verbalization": "TubeRefTokensThread Likely"
+    },
+    {
+        "dataset": "ag_news",
+        "classes": [
+            "world",
+            "sports",
+            "business",
+            "technology"
+        ],
+        "mapper_verbalization": "1) 'world', 2)'sports', 3) 'business', 4)'science/technology'. Use the provided article to determine the category. Preserve the exact labels and structure.",
+        "mapper_class_rate": 1.0,
+        "mapper_f1": 0.32,
+        "soft_prompt_accuracy": 0.9356,
+        "rl_prompt_verbalization": "LibraryMediaPhotos ${ ({"
+    },
+    {
+        "dataset": "subj",
+        "classes": [
+            "objective",
+            "subjective"
+        ],
+        "mapper_verbalization": "(1) \"Subject\", (2) \"Object\", (3) \"Verb\", (4) \"Adjective\", (5) \"Adverb\", (6) \"Residual\". The classification is based on the part-of-speech tag of the word in the sentence. Preserve the exact tags: \"Subject\", \"Object\", \"Verb\", \"Adjective\", \"Adverb\", \"Residual\".",
+        "mapper_class_rate": 0.0,
+        "mapper_f1": 0.0,
+        "soft_prompt_accuracy": 0.9811,
+        "rl_prompt_verbalization": "AttackMediaSpotPerformance polish"
+    },
+    {
+        "dataset": "sst5",
+        "classes": [
+            "terrible",
+            "bad",
+            "neutral",
+            "good",
+            "great"
+        ],
+        "mapper_verbalization": "1) \"ATTACK\" for a negative review, 2) \"NOT ATTACK\" for a non-negative review.  The first sentence is the review.  The second sentence is the summary.  Use the summary to determine the classification.",
+        "mapper_class_rate": 0.0,
+        "mapper_f1": 0.0,
+        "soft_prompt_accuracy": 0.5940,
+        "rl_prompt_verbalization": "ConnectionLogSkipComplete Tanaka"
+    }
+]

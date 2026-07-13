@@ -37,5 +37,5 @@ visualizations/
 !*.ipynb
 
 
-!verbalizations/.gitkeep
-!verbalizations/master_verbalizations.json
+# Allow verbalization json files
+!verbalizations/*.json
