@@ -2,6 +2,7 @@ import os
 import argparse
 import random
 import sqlite3
+from collections import defaultdict
 import pandas as pd
 from tqdm import tqdm
 
@@ -11,20 +12,9 @@ def fetch_dataset_ids(cursor):
     return [row[0] for row in cursor.fetchall()]
 
 
-def datasets_table_has_category(cursor):
-    cursor.execute("PRAGMA table_info(datasets)")
-    columns = [row[1] for row in cursor.fetchall()]
-    return "category" in columns
-
-
-def fetch_dataset_metadata(cursor, dataset_id, has_category):
-    if has_category:
-        cursor.execute("SELECT category, hard_prompt FROM datasets WHERE dataset_id = ?", (dataset_id,))
-        return cursor.fetchone()
-
-    cursor.execute("SELECT hard_prompt FROM datasets WHERE dataset_id = ?", (dataset_id,))
-    (hard_prompt,) = cursor.fetchone()
-    return None, hard_prompt
+def fetch_dataset_metadata(cursor, dataset_id):
+    cursor.execute("SELECT category, hard_prompt FROM datasets WHERE dataset_id = ?", (dataset_id,))
+    return cursor.fetchone()
 
 
 def fetch_keywords(cursor, dataset_id):
@@ -45,16 +35,52 @@ def fetch_split_rows(cursor, dataset_id, split):
     return cursor.fetchall()
 
 
+def stratified_split(train_split_rows, num_classes, num_train, num_dev, rng):
+    """Split rows into train/dev with per-class counts as equal as possible.
+
+    Returns None if any class doesn't have enough rows for its quota, so
+    callers can skip the dataset instead of producing a class-imbalanced
+    (or class-missing) train/dev split.
+    """
+    rows_by_label = defaultdict(list)
+    for sentence, label in train_split_rows:
+        rows_by_label[label].append((sentence, label))
+
+    if len(rows_by_label) < num_classes:
+        return None
+
+    for label in rows_by_label:
+        rng.shuffle(rows_by_label[label])
+
+    base_train, extra_train = divmod(num_train, num_classes)
+    base_dev, extra_dev = divmod(num_dev, num_classes)
+
+    train_rows, dev_rows = [], []
+    for i, label in enumerate(sorted(rows_by_label.keys())):
+        n_train = base_train + (1 if i < extra_train else 0)
+        n_dev = base_dev + (1 if i < extra_dev else 0)
+
+        class_rows = rows_by_label[label]
+        if len(class_rows) < n_train + n_dev:
+            return None
+
+        train_rows.extend(class_rows[:n_train])
+        dev_rows.extend(class_rows[n_train:n_train + n_dev])
+
+    return train_rows, dev_rows
+
+
 def write_tsv(rows, path):
     df = pd.DataFrame(rows, columns=["sentence", "label"])
     df.to_csv(path, sep="\t", index=False)
 
 
 def write_classes_md(path, dataset_id, category, hard_prompt, keywords):
-    lines = [f"# Dataset {dataset_id}", ""]
-    if category is not None:
-        lines += [f"**Category:** {category}", ""]
-    lines += [
+    lines = [
+        f"# Dataset {dataset_id}",
+        "",
+        f"**Category:** {category}",
+        "",
         f"**Hard Prompt:** {hard_prompt}",
         "",
         "## Classes",
@@ -102,8 +128,6 @@ def run(args_list):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    HAS_CATEGORY = datasets_table_has_category(cursor)
-
     # Fetch and shuffle all dataset ids to determine sampling order
     dataset_ids = fetch_dataset_ids(cursor)
     random.shuffle(dataset_ids)
@@ -129,27 +153,32 @@ def run(args_list):
             success_count += 1
             continue
 
-        category, hard_prompt = fetch_dataset_metadata(cursor, dataset_id, HAS_CATEGORY)
+        category, hard_prompt = fetch_dataset_metadata(cursor, dataset_id)
         keywords = fetch_keywords(cursor, dataset_id)
 
         train_split_rows = fetch_split_rows(cursor, dataset_id, "train")
         test_rows = fetch_split_rows(cursor, dataset_id, "test")
 
         # Skip incomplete mini-datasets that don't have enough data
-        if len(train_split_rows) < NUM_TRAIN + NUM_DEV or len(test_rows) == 0:
+        if len(test_rows) == 0:
             skipped_count += 1
-            tqdm.write(
-                f"Skipping dataset_id={dataset_id}: "
-                f"{len(train_split_rows)} train-split rows, {len(test_rows)} test-split rows"
-            )
+            tqdm.write(f"Skipping dataset_id={dataset_id}: no test-split rows")
             continue
 
-        # Sample train/dev uniformly at random from the DB train-split pool,
+        # Sample train/dev with per-class counts as equal as possible, so every
+        # class is guaranteed representation in both splits (avoids a class
+        # ending up with zero train/dev examples under a plain uniform sample),
         # using a per-dataset RNG so the outer dataset-selection shuffle is untouched
         rng = random.Random(SEED + dataset_id)
-        rng.shuffle(train_split_rows)
-        train_rows = train_split_rows[:NUM_TRAIN]
-        dev_rows = train_split_rows[NUM_TRAIN:NUM_TRAIN + NUM_DEV]
+        split_result = stratified_split(train_split_rows, len(keywords), NUM_TRAIN, NUM_DEV, rng)
+        if split_result is None:
+            skipped_count += 1
+            tqdm.write(
+                f"Skipping dataset_id={dataset_id}: insufficient per-class train-split rows "
+                f"for {len(keywords)} classes ({len(train_split_rows)} total train-split rows)"
+            )
+            continue
+        train_rows, dev_rows = split_result
 
         os.makedirs(out_dir, exist_ok=True)
 
