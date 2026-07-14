@@ -111,7 +111,7 @@ def run(args_list):
     parser.add_argument("--num_datasets", type=int, default=10)
     parser.add_argument("--num_train", type=int, default=32)
     parser.add_argument("--num_dev", type=int, default=32)
-    parser.add_argument("--seed", type=int, default=47)
+    parser.add_argument("--seed", type=int, default=42)
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables
