@@ -96,7 +96,8 @@ def run(args_list=None):
             # Extract data for the batch
             task_names = [s["task_name"] for s in batch_samples]
             hard_prompts = [s["hard_prompt"] for s in batch_samples]
-            instances_list = [s.get("instances", []) for s in batch_samples]
+            train_instances_list = [s.get("train_instances", []) for s in batch_samples]
+            val_instances_list = [s.get("val_instances", []) for s in batch_samples]
             
             # Stack soft prompts: (batch_size, seq_len, embed_dim)
             soft_prompts = torch.stack([s["soft_prompt"] for s in batch_samples]).to(DEVICE, dtype=DTYPE)
@@ -133,13 +134,13 @@ def run(args_list=None):
             
             # Process and store results for each sample in the batch
             for j in range(len(batch_samples)):
-                task_name = task_names[j]
                 results_data.append({
-                    "task_name": task_name,
+                    "task_name": task_names[j],
                     "hard_prompt": hard_prompts[j],
-                    "verbalization": pred_texts[j],
-                    "verbalization_rouge_l": rouge_l_scores[j],
-                    "instances": instances_list[j]
+                    "mapper_hard_prompt": pred_texts[j],
+                    "mapper_hard_prompt_rougeL": rouge_l_scores[j],
+                    "train_instances": train_instances_list[j],
+                    "val_instances": val_instances_list[j]
                 })
 
     # Save to JSON

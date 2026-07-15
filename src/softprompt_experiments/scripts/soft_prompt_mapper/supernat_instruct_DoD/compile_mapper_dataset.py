@@ -29,8 +29,8 @@ def build_task_records(split_df, num_examples: int, seed: int, num_train_instanc
         train_rows = task_df.iloc[:split_idx]
         val_rows = task_df.iloc[split_idx:]
 
-        training_instances = train_rows[['input', 'output']].head(num_train_instances).to_dict('records')
-        validation_instances = val_rows[['input', 'output']].to_dict('records')
+        train_instances = train_rows[['input', 'output']].head(num_train_instances).to_dict('records')
+        val_instances = val_rows[['input', 'output']].to_dict('records')
 
         # reduced_instructions explosion is disabled -> one instruction per task
         instruction = task_df['instruction'].iloc[0]
@@ -38,8 +38,8 @@ def build_task_records(split_df, num_examples: int, seed: int, num_train_instanc
         records.append({
             'task_name': task_name,
             'instruction': instruction,
-            'training_instances': training_instances,
-            'validation_instances': validation_instances
+            'train_instances': train_instances,
+            'val_instances': val_instances
         })
 
     return records
@@ -60,8 +60,8 @@ def compile_data_list(dataset_records: List[Dict[str, Any]],
         # Unpack task_name and hard_prompt
         task_name = task_map['task_name']
         hard_prompt = task_map['instruction']
-        training_instances = task_map['training_instances']
-        validation_instances = task_map['validation_instances']
+        train_instances = task_map['train_instances']
+        val_instances = task_map['val_instances']
 
         # If we encounter a new task name
         # Then we refresh the soft prompt tensor
@@ -95,8 +95,8 @@ def compile_data_list(dataset_records: List[Dict[str, Any]],
             "soft_prompt": soft_prompt_tensor,
             "soft_prompt_init_embeddings": soft_prompt_init_embeddings,
             "hard_prompt": hard_prompt,
-            "training_instances": training_instances,
-            "validation_instances": validation_instances
+            "train_instances": train_instances,
+            "val_instances": val_instances
         })
 
     # Log how many datasets were skipped
