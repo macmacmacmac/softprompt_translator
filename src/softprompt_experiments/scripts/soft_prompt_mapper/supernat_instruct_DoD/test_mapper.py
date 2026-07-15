@@ -8,6 +8,8 @@ import pandas as pd
 from tqdm import tqdm
 import evaluate
 import json
+from sentence_transformers import SentenceTransformer
+from sentence_transformers.util import cos_sim
 
 # Driver Code
 def run(args_list=None):
@@ -29,6 +31,7 @@ def run(args_list=None):
     parser.add_argument("--num_tokens", type=int, default=20)
     parser.add_argument("--seed", type=int, default=47)
     parser.add_argument("--do-sample", action="store_true", help="Enable sampling decoding")
+    parser.add_argument("--embed_model_name", type=str, default="all-MiniLM-L6-v2")
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables
@@ -39,6 +42,7 @@ def run(args_list=None):
     NUM_SAMPLES = args.num_samples
     SEED = args.seed
     DO_SAMPLE = args.do_sample
+    EMBED_MODEL_NAME = args.embed_model_name
     OUTPUT_JSON_PATH = os.path.join(LORA_DIR, "verbalizations.json")
 
     # Set the Seed for this experiment
@@ -50,6 +54,10 @@ def run(args_list=None):
 
     # Load Rouge Metric
     ROUGE_METRIC = evaluate.load("rouge")
+
+    # Load Embedding Model
+    print(f"Loading embedding model '{EMBED_MODEL_NAME}'...")
+    embed_model = SentenceTransformer(EMBED_MODEL_NAME, device=DEVICE)
 
     # ┌───────────────────────────────────────────────┐
     # │                   DATASET PREP                │
@@ -131,7 +139,12 @@ def run(args_list=None):
                 use_aggregator=False
             )
             rouge_l_scores = rouge_results['rougeL']
-            
+
+            # Compute per-sample cosine similarity between generated verbalizations and hard prompts
+            pred_embeddings = embed_model.encode(pred_texts, convert_to_tensor=True)
+            hard_embeddings = embed_model.encode(hard_prompts, convert_to_tensor=True)
+            cosine_scores = cos_sim(pred_embeddings, hard_embeddings).diagonal().cpu().tolist()
+
             # Process and store results for each sample in the batch
             for j in range(len(batch_samples)):
                 results_data.append({
@@ -139,6 +152,7 @@ def run(args_list=None):
                     "hard_prompt": hard_prompts[j],
                     "mapper_hard_prompt": pred_texts[j],
                     "mapper_hard_prompt_rougeL": rouge_l_scores[j],
+                    "mapper_hard_prompt_cos_sim": cosine_scores[j],
                     "train_instances": train_instances_list[j],
                     "val_instances": val_instances_list[j]
                 })
