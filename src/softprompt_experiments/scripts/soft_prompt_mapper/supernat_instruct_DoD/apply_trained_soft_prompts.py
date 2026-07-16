@@ -69,11 +69,21 @@ def run(args_list=None):
             val_instances = item["val_instances"]
 
             # Prep Input / Output pairs
-            inputs = [f"Input: {instance["input"]}\nOutput: " for instance in val_instances]
+            # No trailing space after "Output:" -- must match train_softprompts.py's
+            # prompt format exactly (a trailing space tokenizes as a standalone token
+            # the soft prompt never saw during training)
+            inputs = [f"Input: {instance["input"]}\nOutput:" for instance in val_instances]
             outputs = [f"{instance["output"]}" for instance in val_instances]
 
+            # Cap generation like train_softprompts.py: longest target for this task
+            # (measured with the leading space, as in training) + slack for EOS
+            task_max_new_tokens = max(
+                len(tokenizer.encode(f" {instance['output']}", add_special_tokens=False))
+                for instance in val_instances
+            ) + 10
+
             # Tokenize Inputs, and generate embeddings using Llama Embeddings model
-            tokenized = tokenizer(inputs, add_special_tokens=True, return_tensors='pt',padding='longest').to(DEVICE)
+            tokenized = tokenizer(inputs, add_special_tokens=True, return_tensors='pt',padding='longest', padding_side='left').to(DEVICE)
             input_ids, attn_mask = tokenized['input_ids'], tokenized['attention_mask']
             input_embeds = llama_word_embeddings(input_ids).to(DEVICE, dtype=DTYPE)                             # (batch_size, seq_len, embed_dim)
 
@@ -89,9 +99,9 @@ def run(args_list=None):
             pred_ids = model.generate(
                 inputs_embeds=full_embeds,
                 attention_mask=full_attn_mask,
-                max_new_tokens=512,
-                pad_token_id=tokenizer.eos_token_id,
-                eos_token_id=tokenizer.eos_token_id
+                max_new_tokens=task_max_new_tokens,
+                do_sample=False,
+                pad_token_id=tokenizer.eos_token_id
             )
 
             # Decode the batched outputs
@@ -108,13 +118,11 @@ def run(args_list=None):
             # Compute ROUGE-L for the entire batch
             rouge_results = ROUGE_METRIC.compute(
                 predictions=pred_texts, 
-                references=outputs, 
-                use_stemmer=True,
-                use_aggregator=False
+                references=outputs
             )
 
-            # Compute Avg Task ROUGE-L for this task
-            soft_task_rougeL = torch.mean(torch.tensor(rouge_results['rougeL'])).item()
+            # compute() already returns a single aggregated score for the batch
+            soft_task_rougeL = rouge_results['rougeL']
 
             # ┌───────────────────────────────────────────────┐
             # │                AGGREGATE RESULTS              │
@@ -142,8 +150,12 @@ def run(args_list=None):
         master_verbalization["soft_task_rougeL"] = soft_prompt_result["soft_task_rougeL"]
 
     # Save master verbalizations
-    with open(MASTER_VERBALIZATIONS_PATH, "w") as f:
+    with open("test2.json", "w") as f:
         json.dump(master_verbalizations, f, indent = 4)
+
+
+    # with open(MASTER_VERBALIZATIONS_PATH, "w") as f:
+    #     json.dump(master_verbalizations, f, indent = 4)
 
 
     

@@ -97,8 +97,6 @@ def run(args_list=None):
 
     MODEL = args.model
 
-    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8b-Instruct")
-
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("API key not found.")
