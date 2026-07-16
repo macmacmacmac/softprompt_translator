@@ -7,7 +7,45 @@ from typing import List, Dict, Any
 import random
 
 
-def compile_data_list(dataset_records: List[Dict[str, Any]], 
+def build_task_records(split_df, num_examples: int, seed: int, num_train_instances: int) -> List[Dict]:
+    """
+    Reproduce train_softprompts.py's per-task sample + 90/10 split so that
+    validation_instances are the exact rows the soft prompt was RougeL-scored on,
+    and training_instances are drawn from the rows the soft prompt trained on.
+    Returns one record per task_name.
+    """
+    records = []
+    grouped = split_df.groupby('task_name')
+
+    for task_name in grouped.groups.keys():
+        task_df = grouped.get_group(task_name)
+
+        # Mirror train_softprompts.py exactly: cap to num_examples (seeded), then 90/10 split.
+        # sample() selects by position, so identical row order + count + seed => identical rows.
+        if len(task_df) > num_examples:
+            task_df = task_df.sample(n=num_examples, random_state=seed)
+
+        split_idx = int(len(task_df) * 0.9)
+        train_rows = task_df.iloc[:split_idx]
+        val_rows = task_df.iloc[split_idx:]
+
+        train_instances = train_rows[['input', 'output']].head(num_train_instances).to_dict('records')
+        val_instances = val_rows[['input', 'output']].to_dict('records')
+
+        # reduced_instructions explosion is disabled -> one instruction per task
+        instruction = task_df['instruction'].iloc[0]
+
+        records.append({
+            'task_name': task_name,
+            'instruction': instruction,
+            'train_instances': train_instances,
+            'val_instances': val_instances
+        })
+
+    return records
+
+
+def compile_data_list(dataset_records: List[Dict[str, Any]],
                       trained_soft_prompts_dir: str) -> List[Dict]:
 
     compiled_data = []
@@ -22,7 +60,8 @@ def compile_data_list(dataset_records: List[Dict[str, Any]],
         # Unpack task_name and hard_prompt
         task_name = task_map['task_name']
         hard_prompt = task_map['instruction']
-        instances = task_map['instances']
+        train_instances = task_map['train_instances']
+        val_instances = task_map['val_instances']
 
         # If we encounter a new task name
         # Then we refresh the soft prompt tensor
@@ -56,7 +95,8 @@ def compile_data_list(dataset_records: List[Dict[str, Any]],
             "soft_prompt": soft_prompt_tensor,
             "soft_prompt_init_embeddings": soft_prompt_init_embeddings,
             "hard_prompt": hard_prompt,
-            "instances": instances
+            "train_instances": train_instances,
+            "val_instances": val_instances
         })
 
     # Log how many datasets were skipped
@@ -81,7 +121,8 @@ def run(args_list):
     parser.add_argument("--dataset_path", type=str, default="SoftPromptTranslator/SUPER-NATURALINSTRUCTIONS-english-filtered")
     parser.add_argument("--trained_soft_prompts_dir", type=str, default="./trained_soft_prompts/General-DoD")
     parser.add_argument("--compiled_dataset_dir", type=str, default="./datasets/mapper_training_dataset/General-DoD")
-    parser.add_argument("--num_instances", type=int, default=10, help="Number of instances to save per compiled dataset for mapper training")
+    parser.add_argument("--num_examples", type=int, default=500, help="Per-task cap; MUST match train_softprompts.py to reproduce its val split")
+    parser.add_argument("--num_train_instances", type=int, default=5, help="Number of training-split instances to store per task")
     parser.add_argument("--seed", type=int, default=47)
     args, _ = parser.parse_known_args(args_list)
 
@@ -89,7 +130,8 @@ def run(args_list):
     DATASET_PATH = args.dataset_path
     TRAINED_SOFT_PROMPTS_DIR = args.trained_soft_prompts_dir
     COMPILED_DATASET_DIR = args.compiled_dataset_dir
-    NUM_INSTANCES = args.num_instances
+    NUM_EXAMPLES = args.num_examples
+    NUM_TRAIN_INSTANCES = args.num_train_instances
     SEED = args.seed
 
     # Fetch all hard prompts from Hugging Face Dataset
@@ -120,23 +162,10 @@ def run(args_list):
     #     'reduced_instructions': 'instruction'
     # })
 
-    # Group by task and instruction, and take the first NUM_INSTANCE rows from each group
-    train_dataset_df = train_dataset_df.groupby(['task_name', 'instruction']).head(NUM_INSTANCES).reset_index(drop=True)
-    test_dataset_df = test_dataset_df.groupby(['task_name', 'instruction']).head(NUM_INSTANCES).reset_index(drop=True)
-
-    # Group by task and instruction and fold the input/output pairs into an 'instances' column
-    train_dataset_df = train_dataset_df.groupby(['task_name', 'instruction']).apply(
-        lambda x: x[['input', 'output']].to_dict('records')
-    ).reset_index(name='instances')
-
-    test_dataset_df = test_dataset_df.groupby(['task_name', 'instruction']).apply(
-        lambda x: x[['input', 'output']].to_dict('records')
-    ).reset_index(name='instances')
-
-
-    # Create a List of {Dataset Task, Hard Prompt} Dicts for Train and Test sets
-    train_dataset_records = train_dataset_df.to_dict(orient='records')
-    test_dataset_records = test_dataset_df.to_dict(orient='records')
+    # Reproduce train_softprompts.py's per-task split so validation_instances match the
+    # exact rows each soft prompt was RougeL-scored on (+ a few training-split instances).
+    train_dataset_records = build_task_records(train_dataset_df, NUM_EXAMPLES, SEED, NUM_TRAIN_INSTANCES)
+    test_dataset_records = build_task_records(test_dataset_df, NUM_EXAMPLES, SEED, NUM_TRAIN_INSTANCES)
 
     print(f"Found {len(train_dataset_records)} hard prompts in training dataset")
     print(f"Found {len(test_dataset_records)} hard prompts in testing dataset")

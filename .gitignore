@@ -37,5 +37,4 @@ visualizations/
 !*.ipynb
 
 
-# Allow verbalization json files
 !verbalizations/*.json
