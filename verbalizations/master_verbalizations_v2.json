@@ -228,7 +228,10 @@
                 "input": "The orphaned kids performed worse than the raised kids because the _ ones were guided.",
                 "output": "raised"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " or the same instruction, generate a rhyming word for the input word. | Instruction: Generate a word that rhymes with the input word. If no rhyming word is found, return \"No\". | Instruction: Generate a word that is a synonym of the input word. If no",
+        "inspect_hard_prompt_rougeL": 0.1836734694,
+        "inspect_hard_prompt_cos_sim": 0.04618647322058678
     },
     {
         "task_name": "task034_winogrande_question_modification_object",
@@ -459,7 +462,10 @@
                 "input": "Context Word: dress. \nQuestion: She wanted a new dress for the party but ended up buying a second hand dress, because the _ was too expensive. \nAnswer: new dress.",
                 "output": "She wanted a new dress for the party but ended up buying a second hand dress, because the _ was less expensive."
             }
-        ]
+        ],
+        "inspect_hard_prompt": " a) Use a dictionary to find a word that rhymes with the input word. b) If no rhyming word found, return \"No.\" | Instruction: Use a dictionary to find a word that rhymes with the input word. If no rhyming word found, return \"No",
+        "inspect_hard_prompt_rougeL": 0.0626304802,
+        "inspect_hard_prompt_cos_sim": 0.2230151891708374
     },
     {
         "task_name": "task035_winogrande_question_modification_person",
@@ -690,7 +696,10 @@
                 "input": "Context Word: sharp. \nQuestion: PersonX always kept a sharp knife in the kitchen compared to PersonY because _ was a professional chef. \nAnswer: PersonX",
                 "output": "PersonX never kept a sharp knife in the kitchen compared to PersonY because _ was a professional chef."
             }
-        ]
+        ],
+        "inspect_hard_prompt": " in the correct answer. | Instruction: Provide a response that is a direct quote from the text. Ensure the response is a single sentence. Preserve the exact format of the input. | Instruction: Provide a response that is a direct quote from the text. Ensure the response is a single sentence. Preserve",
+        "inspect_hard_prompt_rougeL": 0.0921052632,
+        "inspect_hard_prompt_cos_sim": 0.14080777764320374
     },
     {
         "task_name": "task036_qasc_topic_word_to_generate_related_fact",
@@ -921,7 +930,10 @@
                 "input": "Fact: Oxygen is essential for cellular respiration for all aerobic organisms.",
                 "output": "aerobic organism."
             }
-        ]
+        ],
+        "inspect_hard_prompt": " in the paragraph. | Instruction: Use the context to generate a response that is not necessarily true but sounds plausible. | Instruction: Use the context to generate a response that is not necessarily true but sounds plausible. | Instruction: Use the context to generate a response that is not necessarily true but sounds plausible",
+        "inspect_hard_prompt_rougeL": 0.1228070175,
+        "inspect_hard_prompt_cos_sim": 0.231278657913208
     },
     {
         "task_name": "task039_qasc_find_overlapping_words",
@@ -1152,7 +1164,10 @@
                 "input": "Sentence1: Sepals are usually green, which camouflages the bud from possible consumers. \nSentence2: The enclosure of the lower part of the flower is usually green.",
                 "output": "green"
             }
-        ]
+        ],
+        "inspect_hard_prompt": ", maintain the same format, and use the same tags. | Instruction: Use the same format and tags. Use the same format and tags. | Instruction: Use the same format and tags. Use the same format and tags. | Instruction: Use the same format and tags. Use the same format",
+        "inspect_hard_prompt_rougeL": 0.1030927835,
+        "inspect_hard_prompt_cos_sim": 0.18433734774589539
     },
     {
         "task_name": "task050_multirc_answerability",
@@ -1383,7 +1398,10 @@
                 "input": "Sentence: That was no fun. \nQuestion: What happened when the boy got the pea?",
                 "output": "No."
             }
-        ]
+        ],
+        "inspect_hard_prompt": " respective answer. | Instruction: Use the first letter of the first word of the answer as the first letter of the question. | Instruction: Use the first word of the answer as the first word of the question. | Instruction: Use the first word of the answer as the first word of the question",
+        "inspect_hard_prompt_rougeL": 0.1666666667,
+        "inspect_hard_prompt_cos_sim": 0.2966424524784088
     },
     {
         "task_name": "task102_commongen_sentence_generation",
@@ -1614,7 +1632,10 @@
                 "input": "load#wait#worker",
                 "output": "Workers are waiting to load products."
             }
-        ]
+        ],
+        "inspect_hard_prompt": "spend 1 minute reading the text before answering. | Instruction: Provide a response that is a direct quote from the text. Use the exact words from the text. | Instruction: Provide a response that is a direct quote from the text. Use the exact words from the text. | Instruction:",
+        "inspect_hard_prompt_rougeL": 0.1081081081,
+        "inspect_hard_prompt_cos_sim": 0.2451367825269699
     },
     {
         "task_name": "task1153_bard_analogical_reasoning_affordance",
@@ -1845,7 +1866,10 @@
                 "input": "paint : picture. wash : ?",
                 "output": "dishes"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "\u2026 | Instruction: Maintain the same format as the original text. Use the same words and phrases. Use the same sentence structure. | Instruction: Use the same format as the original text. Use the same words and phrases. Use the same sentence structure. | Instruction: Use the same format as the",
+        "inspect_hard_prompt_rougeL": 0.1290322581,
+        "inspect_hard_prompt_cos_sim": 0.21275851130485535
     },
     {
         "task_name": "task1154_bard_analogical_reasoning_travel",
@@ -2076,7 +2100,10 @@
                 "input": "airport : car. school : ?",
                 "output": "bus"
             }
-        ]
+        ],
+        "inspect_hard_prompt": ", Instruction: Generate a response that is a direct quote from the text. | Instruction: Generate a response that is a direct quote from the text. Preserve the original text's format and content. | Instruction: Generate a response that is a direct quote from the text. Preserve the original text's format",
+        "inspect_hard_prompt_rougeL": 0.1782178218,
+        "inspect_hard_prompt_cos_sim": 0.14140182733535767
     },
     {
         "task_name": "task1155_bard_analogical_reasoning_trash_or_treasure",
@@ -2307,7 +2334,10 @@
                 "input": "cushion : treasure. cookie : ?",
                 "output": "treasure"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " the correct answer. Use the same format as the original text. | Instruction: Use the same format as the original text. | Instruction: Use the same format as the original text. | Instruction: Use the same format as the original text. | Instruction: Use the same format as the original text",
+        "inspect_hard_prompt_rougeL": 0.1052631579,
+        "inspect_hard_prompt_cos_sim": 0.14202125370502472
     },
     {
         "task_name": "task1156_bard_analogical_reasoning_tools",
@@ -2538,7 +2568,10 @@
                 "input": "vacuum : vacuum. cut : ?",
                 "output": "knife"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " and Instruction: Maintain the same format as the original text. Use the same words and phrases. | Instruction: Maintain the same format as the original text. Use the same words and phrases. | Instruction: Maintain the same format as the original text. Use the same words and phrases. | Instruction:",
+        "inspect_hard_prompt_rougeL": 0.1632653061,
+        "inspect_hard_prompt_cos_sim": 0.2683144509792328
     },
     {
         "task_name": "task1157_bard_analogical_reasoning_rooms_for_containers",
@@ -2769,7 +2802,10 @@
                 "input": "recliner : den. bookshelf : ?",
                 "output": "hallway"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " alistellaration instruction: Instruction: Maintain the same format as the original text. Use the same sentence structure and word order. Use the same number of words and word order. | Instruction: Use the same format as the original text. Use the same sentence structure and word order. Use the same number",
+        "inspect_hard_prompt_rougeL": 0.125,
+        "inspect_hard_prompt_cos_sim": 0.22167637944221497
     },
     {
         "task_name": "task1159_bard_analogical_reasoning_containers",
@@ -3000,7 +3036,10 @@
                 "input": "potatoes : sack. pickles : ?",
                 "output": "jar"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " 1. Use the context to generate a response. 2. Use the context to generate a response. 3. Use the context to generate a response. 4. Use the context to generate a response. 5. Use the context to generate a response. | Instruction: Use the",
+        "inspect_hard_prompt_rougeL": 0.152173913,
+        "inspect_hard_prompt_cos_sim": 0.16460107266902924
     },
     {
         "task_name": "task1161_coda19_title_generation",
@@ -3231,7 +3270,10 @@
                 "input": "Aim: An epidemiological study of canine parvovirus infection in dogs in and around Bhubaneswar, Odisha was conducted between December 2012 to March 2013 and prevalence rate was studied on the basis of age, breed, and sex. Materials and Methods: A total of 71 fecal samples from suspected diarrheic dogs were collected in sterile phosphate buffer saline (10% W/V) and examined by polymerase chain reaction (PCR) for detection of canine parvo virus infection, followed by epidemiological study in relation to age, breed, and sex. Results: Of 71 samples analyzed, 29 (40.85%) were found to be positive by PCR assay. The infection was higher in Deshi/ local breeds (34.48%), followed by German shepherd (17.24%), equal incidences in mixed and Labrador retriever (10.34%), Rottweiler and German spitz showed 6.90% each and finally lower incidences in four breeds (3.45%) such as Dalmatians, Nea politan mastiff, Pug and Great Dane. Age-wise prevalence study revealed the infection being more in the age group of 3-6 months (41.37%), followed by equal incidences of 27.59% in 1-3 months and 6-12 months age group, and a low incidence in age groups above 12 months (3.45%). The incidence was predominantly higher in males (86.21%) than females (13.79%). The epidemiological analysis revealed that the breed wise prevalence was found to be more in Deshi breeds as compared to others, age groups below 6 months were found to be more prone to parvovirus infection and males were mostly infected.",
                 "output": "Epidemiological study of canine parvovirus infection in and around Bhubaneswar, Odisha, India"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " of the original text. | Instruction: Use the original text to find the correct answer. If no answer is found, return \"No answer.\" Preserve the exact input-output format. | Instruction: Use the original text to find the correct answer. If no answer is found, return \"No answer.\"",
+        "inspect_hard_prompt_rougeL": 0.119047619,
+        "inspect_hard_prompt_cos_sim": 0.12270369380712509
     },
     {
         "task_name": "task1195_disflqa_disfluent_to_fluent_conversion",
@@ -3462,7 +3504,10 @@
                 "input": "Who or no make that what doesn't introduce inequality to a country?",
                 "output": "What doesn't introduce inequality to a country?"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " only. | Instruction: Maintain the same format as the original text. Ensure the answer is a single word. Use a word that is a synonym of the correct answer. | Instruction: Maintain the same format as the original text. Ensure the answer is a single word. Use a word that is a",
+        "inspect_hard_prompt_rougeL": 0.1142857143,
+        "inspect_hard_prompt_cos_sim": 0.3620360791683197
     },
     {
         "task_name": "task133_winowhy_reason_plausibility_detection",
@@ -3693,7 +3738,10 @@
                 "input": "Sentence: I stuck a pin through a carrot. When I pulled the pin out, it had a hole.\n Reason: The 'it' refers to the carrot because They stabbed the carrot. Logically a hole would be left. \n Question: Is the above reasoning correct or wrong? ",
                 "output": "Correct"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "' Instruction: Maintain the same format as the input. Use the same words and phrases. Ensure the answer is a direct response to the question. | Instruction: Maintain the same format as the input. Use the same words and phrases. Ensure the answer is a direct response to the question. | Instruction",
+        "inspect_hard_prompt_rougeL": 0.1333333333,
+        "inspect_hard_prompt_cos_sim": 0.15950749814510345
     },
     {
         "task_name": "task1342_amazon_us_reviews_title",
@@ -3924,7 +3972,10 @@
                 "input": "I've had this for about 6 months now.  I put it on my fridge and put the tablet that was just collecting dust on it.  Now I use it to look up and display recipes in the kitchen.  I absolutely love how easy and clean it is.  I also love that my tablet  doesn't just sit there unused anymore (it only use to get used when I would go on travel but now when I'm home it also gets used, yay!).  Even my friends comment on how neat it is when they come over.<br /><br />It has not come off nor had I had any issues with it.  Good buy.",
                 "output": "AWESOME!"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " Instructions: Maintain the same format as the original text. Use the same sentence structure and word order. | Instruction: Provide a response that is a direct quote from the text. Use the same words and sentence structure. | Instruction: Provide a response that is a paraphrased version of the text.",
+        "inspect_hard_prompt_rougeL": 0.1212121212,
+        "inspect_hard_prompt_cos_sim": 0.26201289892196655
     },
     {
         "task_name": "task1344_glue_entailment_classification",
@@ -4155,7 +4206,10 @@
                 "input": "Sentence 1: Domestic fire incidents have an important impact on population health by contributing to early death, serious and often disfiguring injuries, and ongoing disability. Fire-related injury is a leading cause of unintentional injury in the home in all age groups. Sentence 2: Domestic fires are a major cause of unintentional injury in the home.",
                 "output": "1"
             }
-        ]
+        ],
+        "inspect_hard_prompt": ". Instruction: Use the context to generate a sentence that is grammatically correct and contextually relevant. Ensure the sentence is not a direct quote from the text. | Instruction: Use the context to generate a sentence that is grammatically correct and contextually relevant. Ensure the sentence is not a direct quote",
+        "inspect_hard_prompt_rougeL": 0.1855670103,
+        "inspect_hard_prompt_cos_sim": 0.29637375473976135
     },
     {
         "task_name": "task1345_glue_qqp_question_paraprashing",
@@ -4386,7 +4440,10 @@
                 "input": "How much should I score in Maharashtra CET MBA to get in JBIMS?",
                 "output": "I have scored 90 in CET MBA. Where can I get admissions?"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " of the 3rd paragraph. | Instruction: Provide a response that is a direct quote from the text. | Instruction: Provide a response that is a direct quote from the text. | Instruction: Provide a response that is a direct quote from the text. | Instruction: Provide a response that is",
+        "inspect_hard_prompt_rougeL": 0.1081081081,
+        "inspect_hard_prompt_cos_sim": 0.274586945772171
     },
     {
         "task_name": "task1356_xlsum_title_generation",
@@ -4617,7 +4674,10 @@
                 "input": "The annual festival, described as one of the biggest free city centre events in the South West, started on Friday night with music in Queen Square. It includes dance, market stalls, tall ships and fireworks. The festival has expanded from the harbourside into Castle Park this year. Penny Brohn Cancer Care is the event's official charity. The three-day event also features the Bristol village fayre for the first time.",
                 "output": "Thousands expected at Bristol Harbour Festival"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " 1 day. | Instruction: Provide a response that is a direct quote from the text. | Instruction: Provide a response that is a direct quote from the text. | Instruction: Provide a response that is a direct quote from the text. | Instruction: Provide a response that is a direct quote",
+        "inspect_hard_prompt_rougeL": 0.1315789474,
+        "inspect_hard_prompt_cos_sim": 0.265741765499115
     },
     {
         "task_name": "task1358_xlsum_title_generation",
@@ -4848,7 +4908,10 @@
                 "input": "The Sri Lankan authorities have re-imposed fishing restrictions in Mannar district after the recently concluded presidential elections, fishing community organisations say.",
                 "output": "Mannar fishing restrictions 're-imposed'"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " other than the one mentioned in the question. | Instruction: Provide a response that is a synonym of the input word. | Instruction: Provide a response that is a word that is a synonym of the input word. | Instruction: Provide a response that is a word that is a synonym of the input",
+        "inspect_hard_prompt_rougeL": 0.1505376344,
+        "inspect_hard_prompt_cos_sim": 0.24279586970806122
     },
     {
         "task_name": "task1385_anli_r1_entailment",
@@ -5079,7 +5142,10 @@
                 "input": "Premise: A grasshopper is a sweet, mint-flavored, after-dinner drink. The name of the drink derives from its green color, which comes from cr\u00e8me de menthe. The drink reputedly originated at Tujague's, a landmark bar in the French Quarter of New Orleans, Louisiana, and was invented by its owner, Philip Guichet. The drink gained popularity during the 1950s and 1960s throughout the American South. <sep> Hypothesis: The grasshopper is known for it's strong alcoholic content, as well as it's mint taste.",
                 "output": "Neutral"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " or correct answer.\nInstruction: Use the context to find the answer. | Instruction: Use the context to find the answer. | Instruction: Use the context to find the answer. | Instruction: Use the context to find the answer. | Instruction: Use the context to find the answer. | Instruction",
+        "inspect_hard_prompt_rougeL": 0.0952380952,
+        "inspect_hard_prompt_cos_sim": 0.22099605202674866
     },
     {
         "task_name": "task1386_anli_r2_entailment",
@@ -5310,7 +5376,10 @@
                 "input": "Premise: The 464th Troop Carrier Group was a theater airlift unit of the United States Air Force during the Cold War. It served in the United States under Tactical Air Command between 1953 and 1957. The group operated Fairchild C-119 Flying Boxcar and Fairchild C-123 Provider aircraft as the flying element of the 464th Troop Carrier Wing until being inactivated when the wing was reorganized. <sep> Hypothesis: The 464th Troop Carrier Group served in the United States under Tactical Air Command before 1953 and after 1957.",
                 "output": "Contradiction"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "-Instruction: Use a dictionary to find a word that is a synonym of the input word. | Instruction: Use a dictionary to find a word that is a synonym of the input word.\nThe input word is: \"fear\"\nThe output word is: \"dread\" | The input word",
+        "inspect_hard_prompt_rougeL": 0.119047619,
+        "inspect_hard_prompt_cos_sim": 0.16779746115207672
     },
     {
         "task_name": "task1387_anli_r3_entailment",
@@ -5541,7 +5610,10 @@
                 "input": "Premise: Police are searching for the man who punched an employee at a Manhattan bakery and stole its tip jar.Police say the suspect removed the tip jar from the counter at Buttercup Bakery in Hell's Kitchen.When a female employee tried to stop him, the suspect reportedly punched her in the face and then ran away.Police described the suspect as a black man in his 20s or 30s, and he was last seen wearing a pink hoodie and all dark clothing. <sep> Hypothesis: The female tried to verbally stop the man, but he punched her. ",
                 "output": "Neutral"
             }
-        ]
+        ],
+        "inspect_hard_prompt": ", Maintain the same format as the original text. | Instruction: Provide a response that is a direct quote from the text. Ensure the response is a direct quote from the text. | Instruction: Provide a response that is a direct quote from the text. Ensure the response is a direct quote from the",
+        "inspect_hard_prompt_rougeL": 0.1098901099,
+        "inspect_hard_prompt_cos_sim": 0.22566691040992737
     },
     {
         "task_name": "task1390_wscfixed_coreference",
@@ -5772,7 +5844,10 @@
                 "input": "I tried to paint a picture of an orchard, with lemons in the lemon trees , but (they) came out looking more like light bulbs. <sep> Pronoun:they <sep> Noun: lemons",
                 "output": "True"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "actor: 1.0\nInstruction: Craft one incorrect answer using context words or similar ones. Avoid nonsensical or off-topic answers. Match the correct answer's length and style. Incorporate context words for difficulty. Add variations to prevent predictability. | Instruction: Generate a rhyming",
+        "inspect_hard_prompt_rougeL": 0.0952380952,
+        "inspect_hard_prompt_cos_sim": 0.20029397308826447
     },
     {
         "task_name": "task1391_winogrande_easy_answer_generation",
@@ -6003,7 +6078,10 @@
                 "input": "Emily knew exactly how to read the expressions on Jessica's face, because _ was very observant. (A) Emily (B) Jessica",
                 "output": "A"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " the correct answer. | Instruction: Use the given text to answer the question. The answer is a single word. | Instruction: Use the given text to answer the question. The answer is a single word. | Instruction: Use the given text to answer the question. The answer is a single word",
+        "inspect_hard_prompt_rougeL": 0.2820512821,
+        "inspect_hard_prompt_cos_sim": 0.5336448550224304
     },
     {
         "task_name": "task1407_dart_question_generation",
@@ -6234,7 +6312,10 @@
                 "input": "[['Accademia di Architettura di Mendrisio', 'COUNTRY', 'Switzerland'], ['Accademia di Architettura di Mendrisio', 'NUMBER_OF_STUDENTS', '600'], ['Accademia di Architettura di Mendrisio', 'ESTABLISHED', '1996'], ['Accademia di Architettura di Mendrisio', 'CITY', 'Mendrisio'], ['Accademia di Architettura di Mendrisio', 'ACADEMIC_STAFF_SIZE', '100'], ['Switzerland', 'LEADER_TITLE', 'Federal Chancellor of Switzerland']]",
                 "output": "The _____ is located in Mendrisio, Switzerland and it was established in 1996. It has 100 academic staff and 600 students. Switzerland's leader is the Federal Chancellor."
             }
-        ]
+        ],
+        "inspect_hard_prompt": ".\nAnswer: The answer is 3. | Instruction: Use the same format as the original text. Use the same words and phrases. Use the same sentence structure. | Instruction: Use the same format as the original text. Use the same words and phrases. Use the same sentence structure. |",
+        "inspect_hard_prompt_rougeL": 0.1401273885,
+        "inspect_hard_prompt_cos_sim": 0.2903371751308441
     },
     {
         "task_name": "task1409_dart_text_generation",
@@ -6465,7 +6546,10 @@
                 "input": "[['The Plough', 'eatType', 'pub'], ['The Plough', 'food', 'Japanese'], ['The Plough', 'priceRange', 'more than \u00a330'], ['The Plough', 'familyFriendly', 'no'], ['The Plough', 'near', 'Caf\u00e9 Rouge']]",
                 "output": "The Plough is a Japanese pub near Caf\u00e9 Rouge that is not family-friendly and has a price range of more than 30 pounds."
             }
-        ]
+        ],
+        "inspect_hard_prompt": " to the correct answer. | Instruction: Use the first letter of each word to create a new word. | Instruction: Use the first letter of each word to create a new word. | Instruction: Use the first letter of each word to create a new word. | Instruction: Use the first letter",
+        "inspect_hard_prompt_rougeL": 0.162601626,
+        "inspect_hard_prompt_cos_sim": 0.2102496474981308
     },
     {
         "task_name": "task1439_doqa_cooking_isanswerable",
@@ -6696,7 +6780,10 @@
                 "input": "CONTEXT: When I am using skim powdered milk and want more fat, I just replace some of the water in the recipe with heavy cream.Your recipe doesn't have water, it already uses milk and cream. You could replace a little of the milk with cream to make up the difference.However, with all the cream and butter in that recipe, I doubt you would be able to notice the fat missing from the dry milk. I would just use your skim dry milk and not worry about it.  <sep>  Q: What is a good substitute for full cream milk powder? A: When I am using skim powdered milk and want more fat, I just replace some of the water in the recipe with heavy cream  Q: Does that give you good results? A: and not worry about it  Q: I was thinking of adding butter to the skim milk powder, would this be a good substitution? A: However, with all the cream and butter in that recipe, I doubt you would be able to notice the fat missing from the dry milk  Q: What will happen if I just use the skim milk powder in this milk bread recipe? A: I would just use your skim dry milk and not worry about it  <sep> FOLLOWUP_Q: Do you think adding coconut oil would be a good one?",
                 "output": "No"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " of the given text. | Instruction: Maintain the same format as the original text. | Instruction: Maintain the same format as the original text. | Instruction: Maintain the same format as the original text. | Instruction: Maintain the same format as the original text. | Instruction: Maintain the same format",
+        "inspect_hard_prompt_rougeL": 0.1428571429,
+        "inspect_hard_prompt_cos_sim": 0.24233564734458923
     },
     {
         "task_name": "task1442_doqa_movies_isanswerable",
@@ -6927,7 +7014,10 @@
                 "input": "CONTEXT: The comment prior to the conversation with the astronauts\u00b4 wives (in the control center) clearly states that Capricorn 1 is just close enough to Earth to allow the fluent conversation. Only at the most distant point of the mission the conversation gaps reach 21 minutes. Thus, there seems to be no blooper nor plothole. (I am much more worried about the Apollo mission technology used for a journey of at least a year. Could three astronauts just sit in the command module most of the time? I guess even the strongest personalities would have gone mad. There might have been a strong extended/additional stage of a modified Saturn rocket for the outward and return journey. If this stage was equipped with extra rooms, stores etc. it would appear more realistic than what we see in the movie.)  <sep>  Q: How is the fluent conversation with spacecraft possible in Capricorn One?",
                 "output": "Yes"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " via versa. | Instruction: Use the provided text to find the answer. The answer should be a number. | Instruction: Use the provided text to find the answer. The answer should be a number. | Instruction: Use the provided text to find the answer. The answer should be a number.",
+        "inspect_hard_prompt_rougeL": 0.2105263158,
+        "inspect_hard_prompt_cos_sim": 0.2947235405445099
     },
     {
         "task_name": "task1516_imppres_naturallanguageinference",
@@ -7158,7 +7248,10 @@
                 "input": "Premise : 'If all three actors that could chat commissioned Gregory to exist, it's okay.','Hypothesis : There are exactly three women that could chat.'",
                 "output": "neutral"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "(sic) answer. | Instruction: Maintain the same tone and style as the original text. Use the same sentence structure and word order. Ensure the answer is a direct response to the question. | Instruction: Maintain the same tone and style as the original text. Use the same sentence structure and word",
+        "inspect_hard_prompt_rougeL": 0.1777777778,
+        "inspect_hard_prompt_cos_sim": 0.1779874861240387
     },
     {
         "task_name": "task1529_scitail1.1_classification",
@@ -7389,7 +7482,10 @@
                 "input": "Premise: this limits plant regrowth and water uptake. \n Hypothesis: Most growing plant cells expand through water uptake.",
                 "output": "neutral"
             }
-        ]
+        ],
+        "inspect_hard_prompt": ", preserve the original text and output format. | Instruction: Preserve the original text and output format. Use the same format for the answer. Use the same format for the answer. Use the same format for the answer. Use the same format for the answer. Use the same format for the answer.",
+        "inspect_hard_prompt_rougeL": 0.1666666667,
+        "inspect_hard_prompt_cos_sim": 0.15209826827049255
     },
     {
         "task_name": "task1533_daily_dialog_formal_classification",
@@ -7620,7 +7716,10 @@
                 "input": " Person1:       So , Fred , what are your plans for after graduation ? \n Person2:Well , I \u2019 Ve already got a job waiting for me back in my hometown . \n Person1:        That \u2019 s cool . Have you already found an apartment to live in ? \n Person2:I \u2019 m planning on living with my parents . Won \u2019 t you ? \n Person1:        I couldn \u2019 t even if I wanted to . My parents told me that if I went home , then \u2019 d have to find my own place . \n Person2:You mean they \u2019 re kicking you out ? \n Person1:        Not really , they just don \u2019 t want me living at home . My older sister did that , and she lived at home for seven years . Once she started living at home , it got harder and harder for her to move out . \n Person2:Well , it \u2019 s not like my parents want me to live at home the rest of my life . They said that it \u2019 s ok if I move back home to begin with , but they want me to find a place of my own after a year or so . \n Person1:        My parents just didn \u2019 t handle my older sister very well , and because of that , they want me to be more independent . They think that it \u2019 s important that I should learn how to live on my own . \n Person2:I know I need to learn that myself , but I just don \u2019 t have the money for it at the moment . Living at home allows me to save up some money before I started finding a place . ",
                 "output": "formal"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " of the world. | Instruction: Maintain the same format as the original text. | Instruction: Maintain the same format as the original text. | Instruction: Maintain the same format as the original text. | Instruction: Maintain the same format as the original text. | Instruction: Maintain the same format as",
+        "inspect_hard_prompt_rougeL": 0.0618556701,
+        "inspect_hard_prompt_cos_sim": 0.14859633147716522
     },
     {
         "task_name": "task1534_daily_dialog_question_classification",
@@ -7851,7 +7950,10 @@
                 "input": " Person1:     Your garden is looking beautiful this summer . The flowers are really colorful .  \n Person2:  Thank you . I have roses , tulips , and daffodils . Do you like the rockery with the smaller flowers ?  \n Person1:      Yes , I do . Those are violets , aren \u2019 t they ?  \n Person2:  Yes , they are . This afternoon , I \u2019 m going to prune the hedge .  \n Person1:      The lower branches on that tree are hanging very low . Would you like me to cut them off for you ?  \n Person2:  Thank you ! That would be very kind of you . I have a saw in the garden shed .  \n Person1:      When the lower branches are removed , you \u2019 ll be able to sit under the tree .  \n Person2:  Tomorrow , I \u2019 ll cut the grass . Then the garden will lock perfect .  \n Person1:      Just make sure children don \u2019 t play in the flower beds and destroy the flowers . ",
                 "output": "0"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " Rehabilitate the answer to be a single word. | Instruction: Replace the answer with a word that is a synonym of the answer. | Instruction: Replace the answer with a word that is a hyponym of the answer. | Instruction: Replace the answer with a word that is a hyper",
+        "inspect_hard_prompt_rougeL": 0.1038961039,
+        "inspect_hard_prompt_cos_sim": 0.09740812331438065
     },
     {
         "task_name": "task1540_parsed_pdfs_summarization",
@@ -8082,7 +8184,10 @@
                 "input": "We first consider the problem of learning k-parities in the on-line mistake-bound model: given a hidden vector x \u2208 {0, 1} with |x| = k and a sequence of \u201cquestions\u201d a1, a2, \u00b7 \u00b7 \u00b7 \u2208 {0, 1} , where the algorithm must reply to each question with \u3008ai, x\u3009 (mod 2), what is the best tradeoff between the number of mistakes made by the algorithm and its time complexity? We improve the previous best result of Buhrman et. al. [BGM10] by an exp(k) factor in the time complexity. Second, we consider the problem of learning k-parities in the presence of classification noise of rate \u03b7 \u2208 (0, 1/2). A polynomial time algorithm for this problem (when \u03b7 > 0 and k = \u03c9(1)) is a longstanding challenge in learning theory. Grigorescu et al. [GRV11] showed an algorithm running in time ( n k/2 )1+4\u03b7+o(1) . Note that this algorithm inherently requires time ( n k/2 ) even when the noise rate \u03b7 is polynomially small. We observe that for sufficiently small noise rate, it is possible to break the ( n k/2 ) barrier. In particular, if for some function f(n) = \u03c9(1) and \u03b1 \u2208 [1/2, 1), k = n/f(n) and \u03b7 = o(f(n)/ log n), then there is an algorithm for the problem with running time poly(n) \u00b7 ( n k )1\u2212\u03b1 \u00b7 e.",
                 "output": "On learning k-parities with and without noise"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " to maintain the exact format. | Instruction: Maintain the exact format and use the same number of words as the original question. Use the same sentence structure and word order. | Instruction: Maintain the exact format and use the same number of words as the original question. Use the same sentence structure and word",
+        "inspect_hard_prompt_rougeL": 0.0506329114,
+        "inspect_hard_prompt_cos_sim": 0.34348294138908386
     },
     {
         "task_name": "task1554_scitail_classification",
@@ -8313,7 +8418,10 @@
                 "input": "Sentence 1: Blood from the lungs enters into the left atrium. Sentence 2: Blood rich in oxygen leaves the lungs through the pulmonary vein and enters the left atrium.",
                 "output": "entails"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " Adler wrote the book. | Instruction: Answer the question with a phrase that is a paraphrase of the question. | Instruction: Answer the question with a phrase that is a paraphrase of the question. | Instruction: Answer the question with a phrase that is a paraphrase of the question. |",
+        "inspect_hard_prompt_rougeL": 0.1052631579,
+        "inspect_hard_prompt_cos_sim": 0.29429155588150024
     },
     {
         "task_name": "task1557_jfleg_answer_generation",
@@ -8544,7 +8652,10 @@
                 "input": "It kept Anasazi from living in American Southwest by very high temparture ; it caused droughts . ",
                 "output": "It kept Anasazi from living in American Southwest because of very high temperatures which caused droughts . "
             }
-        ]
+        ],
+        "inspect_hard_prompt": "  Use the exact words from the text to answer the question. | Instruction: Use the exact words from the text to answer the question. | Instruction: Use the exact words from the text to answer the question. | Instruction: Use the exact words from the text to answer the question. | Instruction",
+        "inspect_hard_prompt_rougeL": 0.0571428571,
+        "inspect_hard_prompt_cos_sim": 0.4018259346485138
     },
     {
         "task_name": "task1586_scifact_title_generation",
@@ -8775,7 +8886,10 @@
                 "input": "CD4 T cells are important in the protective immune response against tuberculosis. Two mouse models deficient in CD4 T cells were used to examine the mechanism by which these cells participate in protection against Mycobacterium tuberculosis challenge. Transgenic mice deficient in either MHC class II or CD4 molecules demonstrated increased susceptibility to M. tuberculosis, compared with wild-type mice. MHC class II-/- mice were more susceptible than CD4-/- mice, as measured by survival following M. tuberculosis challenge, but the relative resistance of CD4-/- mice did not appear to be due to increased numbers of CD4-8- (double-negative) T cells. Analysis of in vivo IFN-gamma production in the lungs of infected mice revealed that both mutant mouse strains were only transiently impaired in their ability to produce IFN-gamma following infection. At 2 wk postinfection, IFN-gamma production, assessed by RT-PCR and intracellular cytokine staining, in the mutant mice was reduced by >50% compared with that in wild-type mice. However, by 4 wk postinfection, both mutant and wild-type mice had similar levels of IFN-gamma mRNA and protein production. In CD4 T cell-deficient mice, IFN-gamma production was due to CD8 T cells. Thus, the importance of IFN-gamma production by CD4 T cells appears to be early in infection, lending support to the hypothesis that early events in M. tuberculosis infection are crucial determinants of the course of infection.",
                 "output": "Mice deficient in CD4 T cells have only transiently diminished levels of IFN-gamma, yet succumb to tuberculosis."
             }
-        ]
+        ],
+        "inspect_hard_prompt": " and beyond. | Instruction: Use the first letter of the first word of each sentence to create a new sentence. Preserve the original text's meaning and context. | Instruction: Use the first letter of each word to create a new word. Preserve the original word's meaning and context. | Instruction:",
+        "inspect_hard_prompt_rougeL": 0.0810810811,
+        "inspect_hard_prompt_cos_sim": 0.3404664993286133
     },
     {
         "task_name": "task1598_nyc_long_text_generation",
@@ -9006,7 +9120,10 @@
                 "input": "name[xname], cuisine[Italian], price[high], location[riverside], familyFriendly[no], near[xnear]",
                 "output": "Near xnear, xname is a high priced riverside Italian restaurant where no kids are allowed to ruin your date night."
             }
-        ]
+        ],
+        "inspect_hard_prompt": "erox.\nInstruction: Generate a word that is a synonym of the input word. If the input word is a verb, generate a noun. If the input word is a noun, generate a verb. If the input word is an adjective, generate a noun. If the input word is a pronoun",
+        "inspect_hard_prompt_rougeL": 0.1927710843,
+        "inspect_hard_prompt_cos_sim": 0.22481097280979156
     },
     {
         "task_name": "task1612_sick_label_classification",
@@ -9237,7 +9354,10 @@
                 "input": "sentence_A: The orange rescue boat is not rushing across the water. sentence_B: The orange rescue boat is rushing across the water",
                 "output": "2"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " the correct answer. | Instruction: Use the given text to find a word that is a synonym of the given word. | Instruction: Use the given text to find a word that is an antonym of the given word. | Instruction: Use the given text to find a word that is a hy",
+        "inspect_hard_prompt_rougeL": 0.1320754717,
+        "inspect_hard_prompt_cos_sim": 0.31038787961006165
     },
     {
         "task_name": "task1615_sick_tclassify_b_relation_a",
@@ -9468,7 +9588,10 @@
                 "input": "sentence_A: There is no child holding a water gun or getting sprayed with water. sentence_B: A laughing child is holding a water gun and getting sprayed with water",
                 "output": "B_contradicts_A"
             }
-        ]
+        ],
+        "inspect_hard_prompt": ", and use the same format as the input. | Instruction: Provide a response that is a single word. Use the exact word from the text. | Instruction: Provide a response that is a single word. Use the exact word from the text. | Instruction: Provide a response that is a single",
+        "inspect_hard_prompt_rougeL": 0.2333333333,
+        "inspect_hard_prompt_cos_sim": 0.31680819392204285
     },
     {
         "task_name": "task1622_disfl_qa_text_modication",
@@ -9699,7 +9822,10 @@
                 "input": "Which area of Russia I mean China did Japan conquer in 1935?",
                 "output": "Which area of China did Japan conquer in 1935?"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " 1. Instruction: Use the context to find a word that is similar to the target word. 2. Instruction: Use the context to find a word that is opposite to the target word. 3. Instruction: Use the context to find a word that is related to the target word.",
+        "inspect_hard_prompt_rougeL": 0.1927710843,
+        "inspect_hard_prompt_cos_sim": 0.09402386844158173
     },
     {
         "task_name": "task1624_disfl_qa_question_yesno_classification",
@@ -9930,7 +10056,10 @@
                 "input": "proper question: Who were formerly housed at Sever Hall? \n disfluent question: Who were formerly housed at Harvard Yard, actually at Sever Hall? \n context: Harvard's 209-acre (85 ha) main campus is centered on Harvard Yard in Cambridge, about 3 miles (5 km) west-northwest of the State House in downtown Boston, and extends into the surrounding Harvard Square neighborhood. Harvard Yard itself contains the central administrative offices and main libraries of the university, academic buildings including Sever Hall and University Hall, Memorial Church, and the majority of the freshman dormitories. Sophomore, junior, and senior undergraduates live in twelve residential Houses, nine of which are south of Harvard Yard along or near the Charles River. The other three are located in a residential neighborhood half a mile northwest of the Yard at the Quadrangle (commonly referred to as the Quad), which formerly housed Radcliffe College students until Radcliffe merged its residential system with Harvard. Each residential house contains rooms for undergraduates, House masters, and resident tutors, as well as a dining hall and library. The facilities were made possible by a gift from Yale University alumnus Edward Harkness.",
                 "output": "No"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " description\nAnswer: No\nAnswer: No\nAnswer: No\nAnswer: No\nAnswer: No\nAnswer: No\nAnswer: No\nAnswer: No\nAnswer: No\nAnswer: No\nAnswer: No\nAnswer: No\nAnswer: No\nAnswer: No\nAnswer:",
+        "inspect_hard_prompt_rougeL": 0.023255814,
+        "inspect_hard_prompt_cos_sim": 0.23549027740955353
     },
     {
         "task_name": "task1631_openpi_answer_generation",
@@ -10161,7 +10290,10 @@
                 "input": "entity: loop \nbefore: loose \nafter: engaged \nattr: state",
                 "output": "state of loop was loose before and engaged afterwards"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " only use the words from the text. | Instruction: Use the words from the text to create a sentence that is grammatically correct and makes sense. | Instruction: Use the words from the text to create a sentence that is grammatically correct and makes sense. Use the exact words from the text.",
+        "inspect_hard_prompt_rougeL": 0.1686746988,
+        "inspect_hard_prompt_cos_sim": 0.3812471628189087
     },
     {
         "task_name": "task1640_aqa1.0_answerable_unanswerable_question_classification",
@@ -10392,7 +10524,10 @@
                 "input": "With Burma preoccupied by the Chinese threat, Ayutthaya recovered its territories by 1770, and went on to capture Lan Na by 1776. Burma and Siam went to war until 1855, but all resulted in a stalemate, exchanging Tenasserim (to Burma) and Lan Na (to Ayutthaya). Faced with a powerful China and a resurgent Ayutthaya in the east, King Bodawpaya turned west, acquiring Arakan (1785), Manipur (1814) and Assam (1817). It was the second-largest empire in Burmese history but also one with a long ill-defined border with British India. Question: Which is lower: the number of people in the northern states or the number of registered migrant workers?",
                 "output": "False"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "\nInstruction: Craft one incorrect answer using context words or similar ones. Avoid nonsensical or off-topic answers. Match the correct answer's length and style. Incorporate context words for difficulty. Add variations to prevent predictability. | Instruction: Generate a rhyming word. If none found,",
+        "inspect_hard_prompt_rougeL": 0.1012658228,
+        "inspect_hard_prompt_cos_sim": 0.28368279337882996
     },
     {
         "task_name": "task1659_title_generation",
@@ -10623,7 +10758,10 @@
                 "input": "Patients First Act of 2007 - Amends the Public Health Service Act to require the Secretary of Health and Human Services to conduct and support basic and applied research to develop techniques for the isolation, derivation, production, testing, and human clinical use of stem cells that may result in improved understanding of, or treatments for, diseases and other adverse health conditions, including pluripotent stem cells that have the flexibility of embryonic stem cells (whether or not such pluripotent stem cells have an embryonic source), provided that such techniques will not involve: (1) the creation of a human embryo for research purposes; (2) the destruction or discarding of, or risk of injury to, a living human embryo; or (3) the use of any stem cell the derivation or provision of which would be inconsistent with this Act.\n\nRequires the Secretary to issue guidelines implementing this Act to ensure that any research (including any clinical trial) supported under this Act: (1) is clearly consistent with the standards established in this Act, if conducted using human cells; (2) is prioritized in terms of potential for near-term clinical benefit in human patients; and (3) may take into account techniques outlined by the President's Council on Bioethics and any other appropriate techniques and research.\n\nRequires the Secretary to: (1) report on peer reviewed stem cell research proposals that were not funded; and (2) study and submit recommendations to Congress on any structural changes to the C.W. Bill Young Cell Transplantation Program that would help to expand access to new and future stem cell therapeutic products.",
                 "output": "To intensify stem cell research showing evidence of substantial clinical benefit to patients, and for other purposes."
             }
-        ]
+        ],
+        "inspect_hard_prompt": " and preserve the original input format. | Instruction: Use the same format as the original input. | Instruction: Use the same format as the original input. | Instruction: Use the same format as the original input. | Instruction: Use the same format as the original input. | Instruction: Use the",
+        "inspect_hard_prompt_rougeL": 0.0952380952,
+        "inspect_hard_prompt_cos_sim": 0.0777231827378273
     },
     {
         "task_name": "task1728_web_nlg_data_to_text",
@@ -10854,7 +10992,10 @@
                 "input": "Ayam_penyet | region | \"Nationwide, also can be found in Malaysia and Singapore\"\nAyam_penyet | ingredient | Fried_chicken\nAyam_penyet | mainIngredients | \"Squeezed\" or \"smashed\" fried chicken served with sambal\nAyam_penyet | country | Indonesia",
                 "output": "The fried chicken dish Ayam penyet can be found all over Indonesia, Malaysia and Singapore. The chicken is \"squeezed\" or \"smashed\" and served with sambal."
             }
-        ]
+        ],
+        "inspect_hard_prompt": " a answer. | Instruction: Maintain the same format as the input. Use the exact words from the text. Use the same sentence structure. | Instruction: Maintain the same format as the input. Use the exact words from the text. Use the same sentence structure. | Instruction: Use the exact words",
+        "inspect_hard_prompt_rougeL": 0.152173913,
+        "inspect_hard_prompt_cos_sim": 0.3617970943450928
     },
     {
         "task_name": "task190_snli_classification",
@@ -11085,7 +11226,10 @@
                 "input": "Sentence 1: Several teens are starting a race as older students observe the action. Sentence 2: Some tall humans.",
                 "output": "N"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " the answer is not in the text, use the text to generate a plausible answer. | Instruction: Use the text to generate a plausible answer. If the answer is not in the text, use the text to generate a plausible answer. | Instruction: Use the text to generate a plausible answer. If",
+        "inspect_hard_prompt_rougeL": 0.1538461538,
+        "inspect_hard_prompt_cos_sim": 0.32081353664398193
     },
     {
         "task_name": "task199_mnli_classification",
@@ -11316,7 +11460,10 @@
                 "input": "Sentence 1: He sure has a job, Cap'n. Sentence 2: He has a job.",
                 "output": "yes"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "312. | Instruction: Maintain the same format as the original text. Use the same number of sentences. Use the same number of questions. | Instruction: Maintain the same format as the original text. Use the same number of sentences. Use the same number of questions. | Instruction: Maintain the same",
+        "inspect_hard_prompt_rougeL": 0.0869565217,
+        "inspect_hard_prompt_cos_sim": 0.30462539196014404
     },
     {
         "task_name": "task200_mnli_entailment_classification",
@@ -11547,7 +11694,10 @@
                 "input": "Statement: Leather goods are no longer a bargain in Spain, though very good quality products may still be priced lower than at home. Choices:  1. Leather goods are still very cheap in Spain. 2. Suede clothes are always cheap in Spain. 3. It is possible that some good quality products are cheaper in Spain than at home.",
                 "output": "3"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "isci. | Instruction: Use the given text to answer the question. Use the exact words from the text. Do not add or remove any words. | Instruction: Use the given text to answer the question. Use the exact words from the text. Do not add or remove any words. | Instruction",
+        "inspect_hard_prompt_rougeL": 0.1651376147,
+        "inspect_hard_prompt_cos_sim": 0.41916796565055847
     },
     {
         "task_name": "task201_mnli_neutral_classification",
@@ -11778,7 +11928,10 @@
                 "input": "Statement: For more information on the criteria we used to select these organizations, see appendix I. As federal agencies continue to improve their management and financial accountability, they will be able to draw upon the expertise and experience of these private sector and state government organizations. Choices: 1. Appendix I is the most comprehensive compilation of its nature. 2. Appendix I will provide additional information on the organization selection criteria. 3. Appendix I has no additional information to offer on organization selection criteria.",
                 "output": "1"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " the answer to this question. | Instruction: Provide a response that is a direct quote from the text. | Instruction: Provide a response that is a direct quote from the text. | Instruction: Provide a response that is a direct quote from the text. | Instruction: Provide a response that is a",
+        "inspect_hard_prompt_rougeL": 0.1408450704,
+        "inspect_hard_prompt_cos_sim": 0.3332362473011017
     },
     {
         "task_name": "task202_mnli_contradiction_classification",
@@ -12009,7 +12162,10 @@
                 "input": "Statement: and uh trying desperately to uh get ahead with the company Choices:  1. They are very uncaring about getting promotions in the company. 2. They are attempting to advance their position in the company. 3. They are attempting to get ahead in the company by working harder.",
                 "output": "1"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " your answer. | Instruction: Use the exact word from the text. | Instruction: Use the exact word from the text. | Instruction: Use the exact word from the text. | Instruction: Use the exact word from the text. | Instruction: Use the exact word from the text. | Instruction",
+        "inspect_hard_prompt_rougeL": 0.0941176471,
+        "inspect_hard_prompt_cos_sim": 0.3537590503692627
     },
     {
         "task_name": "task219_rocstories_title_answer_generation",
@@ -12240,7 +12396,10 @@
                 "input": "Sentence 1: Peter was 16 and wanted to quit school. Sentence 2: He wished he could work all day instead of sitting in class. Sentence 3: But his parents said he had to stay in school. Sentence 4: Later in life, Peter realized they had done the right thing. Sentence 5: He thanked his parents for their smart decision.",
                 "output": "Quitter"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "\u200b,\u200b and use the exact words from the text. | Instruction: Use the exact words from the text to answer the question. | Instruction: Use the exact words from the text to answer the question. | Instruction: Use the exact words from the text to answer the question. | Instruction:",
+        "inspect_hard_prompt_rougeL": 0.152173913,
+        "inspect_hard_prompt_cos_sim": 0.34819066524505615
     },
     {
         "task_name": "task220_rocstories_title_classification",
@@ -12471,7 +12630,10 @@
                 "input": "Sentence 1: Dan wanted to be just like his older brother Dave. Sentence 2: Dan majored in business, just like Dave. Sentence 3: Dan moved to New York in order to be close to Dave. Sentence 4: Dan and Dave eventually decided to go into business together. Sentence 5: Now Dan and Dave's is New York's largest furniture supplier. Choices: a. BMW. b. Dan and Dave's.",
                 "output": "b"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " only answer is correct. | Instruction: Provide a response that is a summary of the text. Use the first sentence of the text as the starting point. | Instruction: Provide a response that is a summary of the text. Use the last sentence of the text as the starting point. | Instruction:",
+        "inspect_hard_prompt_rougeL": 0.1086956522,
+        "inspect_hard_prompt_cos_sim": 0.4002903401851654
     },
     {
         "task_name": "task232_iirc_link_number_classification",
@@ -12702,7 +12864,10 @@
                 "input": "Question: How old was the general who defended Arminum when Justin was magister militum? Passage:Nothing is known of Justin's origins or early life. He appears for the first time in 528, when along with Narses he was sent to Italy with 7,000 men as reinforcements for Belisarius, who had just successfully survived siege of Rome by the Ostrogoths. At the time, he held the position of magister militum per Illyricum, a post he may have been appointed to already in 536, after the death of general Mundus. In the dissension that broke out in the Byzantine army between Belisarius and Narses, Justin sided with the latter, and accompanied him to the relief of the Gothic siege of Ariminum, defended by the general John. After the successful outcome of the operation, along with John, Justin proceeded to occupy the region of Aemilia against little Gothic resistance during the winter of 538/539. The rift in the imperial army had by this time deepened to the point that Justin and John outright refused to obey orders from Belisarius to march to the aid of the city of Mediolanum, which was being besieged by the Goths with their Frankish allies, instead waiting for relevant orders from Narses. The delay proved fatal, and the great city was captured and razed by the Franko-Gothic army.\n",
                 "output": "b"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "817, 18thirty, 2nd, 3rd, 4th, 5th, 6th, 7th, 8th, 9th, a, aardvark, aardvarks, aardvarks are social, aard",
+        "inspect_hard_prompt_rougeL": 0.0256410256,
+        "inspect_hard_prompt_cos_sim": 0.08401207625865936
     },
     {
         "task_name": "task233_iirc_link_exists_classification",
@@ -12933,7 +13098,10 @@
                 "input": "Question: In what city is the university located where Juan David Garc\u00eda Bacca taught until his retirement? Passage:Garcia Bacca studied under the Claretians and became a priest in 1925. He continued his formative studies at the University of Munich, University of Zurich and the University of Paris. Yet he quit the Church during the 1930s and began to study philosophy at the University of Barcelona. In 1936 he went into exile because of his criticism of Francisco Franco, traveling first to Ecuador, where he taught at the Central University of Ecuador (1939\u201342) where he became a close friend with the writer Alfredo Pareja Diezcanseco, then to M\u00e9xico, where he taught at the UNAM (1942\u201346) and finally establishing in Venezuela in 1946 and becoming a Venezuelan citizen in 1952. He started teaching upon his arrival at the Central University of Venezuela in 1946 until his retirement in 1971. He won the National Prize for Literature in 1978 for his life's work.\n",
                 "output": "b"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " and answer. | Instruction: Provide a response that is a direct quote from the text. | Instruction: Provide a response that is a direct quote from the text. | Instruction: Provide a response that is a direct quote from the text. | Instruction: Provide a response that is a direct quote from",
+        "inspect_hard_prompt_rougeL": 0.1788617886,
+        "inspect_hard_prompt_cos_sim": 0.38693761825561523
     },
     {
         "task_name": "task242_tweetqa_classification",
@@ -13164,7 +13332,10 @@
                 "input": "Context: Thoughts & prayers are NOT enough. Not when more moms & dads will bury kids this week, & more sons & daughters will grow up without parents.\u2014 Elizabeth Warren (@SenWarren) October 2, 2017 Question: who could grow up without parents? Answer: sons and daughters.",
                 "output": "yes"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " and answer the question. | Instruction: Use the first letter of the first word of the first sentence of the text to answer the question. | Instruction: Use the first word of the first sentence of the text to answer the question. | Instruction: Use the first word of the text to answer the",
+        "inspect_hard_prompt_rougeL": 0.2,
+        "inspect_hard_prompt_cos_sim": 0.3927725553512573
     },
     {
         "task_name": "task249_enhanced_wsc_pronoun_disambiguation",
@@ -13395,7 +13566,10 @@
                 "input": "sentence: Jack believed that David regretted that he had stolen the watch .pronoun: he. A) jack B) david",
                 "output": "david"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "s. | Instruction: Provide a response that is a direct quote from the text. | Instruction: Provide a response that is a direct quote from the text. | Instruction: Provide a response that is a direct quote from the text. | Instruction: Provide a response that is a direct quote from the",
+        "inspect_hard_prompt_rougeL": 0.1764705882,
+        "inspect_hard_prompt_cos_sim": 0.37482479214668274
     },
     {
         "task_name": "task281_points_of_correspondence",
@@ -13626,7 +13800,10 @@
                 "input": "1: After Robert Downey Jr . walked out on an interview , his co-stars Chris Evans and Jeremy Renner found themselves in hot water Wednesday over comments they made in a similar junket interview . 2: When asked by Digital Spy about the character Black Widow 's flirtations with the other superheroes , Renner responded  She 's a slut ,  and Evans , laughing , added that she is a  complete whore .  3: Chris Evans and Jeremy Renner get in hot water after a joke made about  Avengers  character Black Widow .",
                 "output": "1: Chris Evans 2: Evans 3: Chris Evans"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " context: The new policy will be implemented in the first quarter of the year. | Instruction: Use the exact phrase from the text to answer the question. Preserve the original text's format and structure. | Instruction: Use the exact phrase from the text to answer the question. Preserve the original text's",
+        "inspect_hard_prompt_rougeL": 0.1774193548,
+        "inspect_hard_prompt_cos_sim": 0.3515145182609558
     },
     {
         "task_name": "task288_gigaword_summarization",
@@ -13857,7 +14034,10 @@
                 "input": "his final words from the top , beamed by radio from everest 's frozen peak , were triumphant , jubilant .",
                 "output": "death raises questions about south african team by duncan guy"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " with a capital T. | Instruction: Use the given text to find the answer. If the answer is not found, return \"Not found\". | Instruction: Use the given text to find the answer. If the answer is not found, return \"Not found\". | Instruction: Use the given text",
+        "inspect_hard_prompt_rougeL": 0.1492537313,
+        "inspect_hard_prompt_cos_sim": 0.2553633153438568
     },
     {
         "task_name": "task290_tellmewhy_question_answerability",
@@ -14088,7 +14268,10 @@
                 "input": "Charlie was unemployed though she was a good worker. Charlie needed to seek work quickly to keep up with paying bills. Charlie looked in the classified ads for a job and found one. Charlie went to company headquarters and applied in person. Charlie arrived at the interview prepared and was given a job offer.\nWhy did Charlie arrive at the interview prepared?",
                 "output": "Answerable"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " target word, phrase, or expression. | Instruction: Use the context to generate a response that is a paraphrase of the input. Preserve the original meaning and intent. | Instruction: Use the context to generate a response that is a paraphrase of the input. Preserve the original meaning and intent.",
+        "inspect_hard_prompt_rougeL": 0.16,
+        "inspect_hard_prompt_cos_sim": 0.26495546102523804
     },
     {
         "task_name": "task304_numeric_fused_head_resolution",
@@ -14319,7 +14502,10 @@
                 "input": "Kouichi Sakakibara:  Extra One ?\nMei Misaki: Twenty five years ago , shortly after the start of the new management , they realized that a desk was missing in the classroom , even though they had prepared enough seats for all students .\nKouichi Sakakibara: Could not they just check the lists ?\nMei Misaki: They did , but it was useless . The list of students had been altered to be inconsistent . They only lacked a desk .\nKouichi Sakakibara: Did someone rewrote the lists ?\nMei Misaki: I used the word \" altered \" figuratively . They say that memories of all had been changed .\nKouichi Sakakibara: Uh ?\nMei Misaki: That sounds impossible , right ? But I guess that 's true . They said that this phenomenon could happen .\nKouichi Sakakibara: Phenomenon ?\nMei Misaki: At first , everyone thought it was just a mistake and they do n't gave a damn about it . But starting April , people connected to the class , began to die each month .\nKouichi Sakakibara: Does each month ? All year ?\nMei Misaki: This year I think were six students and ten relatives . Quite unusual , is n't it ? This has continued in the class three since .\nKouichi Sakakibara: Then , a third year student from the class named Misaki , died twenty - six years ago ... And starting next year , somehow , there was an additional student in class . Then , people connected to the class began to die each month . But ... Why do people die when there is a extra student ?\nMei Misaki: No one knows why . This is how it happens . Moreover , the extra _ one _ is ... someone dead .",
                 "output": "REFERENCE students"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " 1) Use the context to generate a response that is not true. 2) Use context to generate a response that is not true. 3) Use context to generate a response that is not true. 4) Use context to generate a response that is not true. 5)",
+        "inspect_hard_prompt_rougeL": 0.0717131474,
+        "inspect_hard_prompt_cos_sim": 0.08824168890714645
     },
     {
         "task_name": "task329_gap_classification",
@@ -14550,7 +14736,10 @@
                 "input": "Arulnithi as Tamizh Bindu Madhavi as Malar Ashrita Shetty as Isabella Bagavathi Perumal as Ramanujam Esakki Nassar as Hippy Lahiri M S Bhaskar V S Raghavan Delhi Ganesh Ravi Raghavendra Jayaprakash as Subhash Aadukalam Naren as Narasimhan Manobala as Chettan Karthik Sabesh as Isaac Pandu Crane Manohar as Vatti Scissor Manohar as Suddaley Mohan V Raman as Kundizhakesi Sriranjini as Ponnamma Aruldoss Abhyudaya Gupta as Dr Navneet George as Michael Azhagusundaram Jasper After the release of _his_ previous directorial Irumbu Kottai Murattu Singam, Chimbudevan announced that his next film will be titled as Mareesan with Dhanush playing lead role but due to budget problems the project got shelved. <sep>, Pronoun: his <sep>, A: Crane Manohar <sep>, B: Michael Azhagusundaram Jasper",
                 "output": "Neither"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "isha. | Instruction: Provide a response that is a single word. The word should be a synonym of the word in the question. | Instruction: Provide a response that is a single word. The word should be a synonym of the word in the question. | Instruction: Provide a response that is",
+        "inspect_hard_prompt_rougeL": 0.2568807339,
+        "inspect_hard_prompt_cos_sim": 0.2717588245868683
     },
     {
         "task_name": "task330_gap_answer_generation",
@@ -14781,7 +14970,10 @@
                 "input": "While Phyllis Coates generally distanced herself from the role, Neill embraced her association with Lois Lane, giving frequent talks on college campuses during the 1970s, when interest in the series was revived, endearing herself to audiences with her warmth and humor. Neill continued to appear in Superman-related productions. _She_ originated the role of Lois Lane's mother, Ellen (alternatively, Ella) Lane, in a cameo for the 1978 film Superman, with Kirk Alyn as Lois' father, Sam Lane -- as was the case in reverse with the role of Lois in 1951, Phyllis Coates would later succeed Neill in the role of Ella in Lois & Clark: The New Adventures of Superman; Lois & Clark star Teri Hatcher continued the tradition when she made a guest appearance on Smallville as Ella Lane. <sep>, Pronoun: She",
                 "output": "Ellen"
             }
-        ]
+        ],
+        "inspect_hard_prompt": ", Preserve the exact format of the input and output. | Instruction: Preserve the exact format of the input and output. | Instruction: Preserve the exact format of the input and output. | Instruction: Preserve the exact format of the input and output. | Instruction: Preserve the exact format of the input",
+        "inspect_hard_prompt_rougeL": 0.1463414634,
+        "inspect_hard_prompt_cos_sim": 0.20107458531856537
     },
     {
         "task_name": "task349_squad2.0_answerable_unanswerable_question_classification",
@@ -15012,7 +15204,10 @@
                 "input": "Passage: There were 158,349 households, of which 68,511 (43.3%) had children under the age of 18 living in them, 69,284 (43.8%) were opposite-sex married couples living together, 30,547 (19.3%) had a female householder with no husband present, 11,698 (7.4%) had a male householder with no wife present. There were 12,843 (8.1%) unmarried opposite-sex partnerships, and 1,388 (0.9%) same-sex married couples or partnerships. 35,064 households (22.1%) were made up of individuals and 12,344 (7.8%) had someone living alone who was 65 years of age or older. The average household size was 3.07. There were 111,529 families (70.4% of all households); the average family size was 3.62. Question: How many unmarried opposite-sex partnerships had kids?",
                 "output": "False"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " 1. Instruction: Create a new answer based on the given text. 2. Ensure the answer is in the same format as the original text. 3. Use the information in the text to create a new answer. 4. Do not add or remove any text from the original text",
+        "inspect_hard_prompt_rougeL": 0.1698113208,
+        "inspect_hard_prompt_cos_sim": 0.49925336241722107
     },
     {
         "task_name": "task362_spolin_yesand_prompt_response_sub_classification",
@@ -15243,7 +15438,10 @@
                 "input": "Prompt: Wouldn't you like to know what's behind this door? \n Response 1: Maybe he meant a different Jim? \n Response 2: That's what I'm talking about. You're so sinister. That's the most sinister answer you could give.",
                 "output": "Response 2"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " instance of the word. | Instruction: Provide a response that is a direct quote from the text. | Instruction: Provide a response that is a direct quote from the text. | Instruction: Provide a response that is a direct quote from the text. | Instruction: Provide a response that is a direct",
+        "inspect_hard_prompt_rougeL": 0.1791044776,
+        "inspect_hard_prompt_cos_sim": 0.325783371925354
     },
     {
         "task_name": "task391_causal_relationship",
@@ -15474,7 +15672,10 @@
                 "input": "I rubbed sandpaper on the wood, so there was plenty of water",
                 "output": "not plausible"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " context. Use the paragraph to find the answer. | Instruction: Use the paragraph to find the answer. Use the paragraph to find the answer. Use the paragraph to find the answer. Use the paragraph to find the answer. Use the paragraph to find the answer. Use the paragraph to find the answer",
+        "inspect_hard_prompt_rougeL": 0.1075268817,
+        "inspect_hard_prompt_cos_sim": 0.23268404603004456
     },
     {
         "task_name": "task392_inverse_causal_relationship",
@@ -15705,7 +15906,10 @@
                 "input": "the benefactor requested to stay anonymous because he was not involved in the investigation",
                 "output": "plausible"
             }
-        ]
+        ],
+        "inspect_hard_prompt": ", Instruction: Craft a response that is a direct quote from the text. | Instruction: Craft a response that is a direct quote from the text. Instruction: Craft a response that is a direct quote from the text. Instruction: Craft a response that is a direct quote from the text. Instruction:",
+        "inspect_hard_prompt_rougeL": 0.085106383,
+        "inspect_hard_prompt_cos_sim": 0.14003457129001617
     },
     {
         "task_name": "task393_plausible_result_generation",
@@ -15936,7 +16140,10 @@
                 "input": "The speaker disarmed her debate opponent, so ",
                 "output": "she did the only logical thing"
             }
-        ]
+        ],
+        "inspect_hard_prompt": ": Use the text to find the answer. Use the text to find the answer. | Instruction: Use the text to find the answer. Use the text to find the answer. | Instruction: Use the text to find the answer. Use the text to find the answer. | Instruction: Use the",
+        "inspect_hard_prompt_rougeL": 0.1363636364,
+        "inspect_hard_prompt_cos_sim": 0.4012366235256195
     },
     {
         "task_name": "task401_numeric_fused_head_reference",
@@ -16167,7 +16374,10 @@
                 "input": "Gordie Boggs:  We 're going back to basics . To find our heart .\nSasha: Can I come ?\nGordie Boggs: No , because you do n't have _ one _ .",
                 "output": "heart"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " according to the text. | Instruction: Maintain the same format as the input. Use the same words or their synonyms. Use the same structure and style. | Instruction: Use the same format as the input. Use the same words or their synonyms. Use the same structure and style. | Instruction:",
+        "inspect_hard_prompt_rougeL": 0.1263157895,
+        "inspect_hard_prompt_cos_sim": 0.31617334485054016
     },
     {
         "task_name": "task402_grailqa_paraphrase_generation",
@@ -16398,7 +16608,10 @@
                 "input": "original question: Which animal breed has a color of [Golden Liver]?\nanswer: sussex spaniel\nanswer type: Animal breed.",
                 "output": "What type of animal has the color of [Golden Liver]?"
             }
-        ]
+        ],
+        "inspect_hard_prompt": ", Preserve exact input-output format. | Instruction: Provide a response that is a paraphrased version of the original text. Preserve the original text's meaning and content. | Instruction: Provide a response that is a rewritten version of the original text. Preserve the original text's meaning and content. |",
+        "inspect_hard_prompt_rougeL": 0.1318681319,
+        "inspect_hard_prompt_cos_sim": 0.32296377420425415
     },
     {
         "task_name": "task418_persent_title_generation",
@@ -16629,7 +16842,10 @@
                 "input": "Jon Gruden  has a career record of 95-81 (.540) with nine playoff appearances and one Super Bowl victory in 11 seasons as a coach. (Kirby Lee/USA TODAY Sports)\n Jon Gruden  was welcomed back for a second stint as Oakland Raiders coach on Tuesday  now  he \u00e2\u0080\u0099ll be tasked with getting them back to the postseason. Based on  his  starting point  however  an immediate return to the playoffs is unlikely in 2018.\n[Brewer:  Jon Gruden  is \u00e2\u0080\u0098a big effin\u00e2\u0080\u0099 deal\u00e2\u0080\u0099 to the Raiders  but perhaps even bigger for all coaches]\nSo where can  Gruden  make up ground and quickly improve this roster? The wide receivers \u00e2\u0080\u0094 once thought to be a strength of this team \u00e2\u0080\u0094 may need a makeover.\nAmari Cooper produced even fewer yards per route run than Crabtree (1.5)  and was ranked 60th out of 78 qualified receivers for his on-field performance. Both need to be better in 2018. If not   Gruden  is going to have to find Carr a top target to throw to.\n Gruden  has even more work cut out for  him  on the defensive side of the ball. Oakland allowed 2.1 points per drive last season  the fourth-most in the league  with a 101.8 passer rating against  the third-worst in football in 2017. To put that in perspective  opposing quarterbacks performed as well as Carson Wentz \u00e2\u0080\u0094 an MVP candidate before  his  season-ending injury in Week 14 \u00e2\u0080\u0094 against the Raiders while the league average was closer to that of Andy Dalton (86.6).",
                 "output": "Jon Gruden must solve two big problems for the Raiders to harbor playoff hopes"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " and incorrect answers should be in the same format. | Instruction: Maintain the same format as the input. Use context words to generate incorrect answers. Ensure the correct answer is a single word. | Instruction: Use context words to generate incorrect answers. Ensure the correct answer is a single word. | Instruction",
+        "inspect_hard_prompt_rougeL": 0.1395348837,
+        "inspect_hard_prompt_cos_sim": 0.10733479261398315
     },
     {
         "task_name": "task442_com_qa_paraphrase_question_generation",
@@ -16860,7 +17076,10 @@
                 "input": "Question: who was the wife of the us's 2nd president?",
                 "output": "who was the 2nd president's wife of the us?"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "'s answer. | Instruction: Use the context to generate a response that is grammatically correct and contextually relevant. Ensure the response is a single word or a short phrase. Use the context to generate a response that is grammatically correct and contextually relevant. Ensure the response is a single word or",
+        "inspect_hard_prompt_rougeL": 0.1616161616,
+        "inspect_hard_prompt_cos_sim": 0.42832911014556885
     },
     {
         "task_name": "task500_scruples_anecdotes_title_generation",
@@ -17091,7 +17310,10 @@
                 "input": "My girlfriend  and I have been together for about 3 and a half months. I told her before we started dating that i am very serious about my time and my hobbies i hope to turn into work someday. But recently she and I got into a fight. She was upset that I hadn't been texting her back fast. Granted it would be hours until I responded but I was busy. Not ignoring her. I told her that it would be like this. I love her alot but I need my time to do my activities. And I have been responding faster but I still think she shouldn't have gotten mad and instead talked to me.",
                 "output": "not wanting to hang 24/7"
             }
-        ]
+        ],
+        "inspect_hard_prompt": ", and use the answer to generate a new question. | Instruction: Provide a response that is a single word. Use the input as the first word of the response. | Instruction: Provide a response that is a single word. Use the input as the first word of the response. | Instruction:",
+        "inspect_hard_prompt_rougeL": 0.2307692308,
+        "inspect_hard_prompt_cos_sim": 0.17241720855236053
     },
     {
         "task_name": "task510_reddit_tifu_title_summarization",
@@ -17322,7 +17544,10 @@
                 "input": "Text: this literally happend a few minutes ago.\n\ni take the train to go to college, this day i had to retake a final (i failed the first try). so i woke up at 6 a.m. helped my mom get out of her bed (she broke her knee) and started getting ready because i had to catch the only bus that would get me to the train station on time. \nfast forward i'm sitting in the train and we're at the last stop. i get out and have to take a bus to get to college (this is the first time i have to take a bus because through the year i would get off the train a few stations earlier to carpool with my friends. this is where i fuck up, i take the bus my app told me to take i sit down and wait until i  reach my destination. i didn't i took the wrong bus. so here i'm sitting on the bus to get back to the train station.\n\n \n\nsorry for any grammar or formating  mistakes i made in the post, i'm writing this on my phone and i'm belgian so my native language is dutch.",
                 "output": "Tifu by taking the wrong bus"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "lak. | Instruction: Provide a response that is a direct quote from the text. If the quote is not found, return \"No quote.\" Preserve the exact input and output format. | Instruction: Provide a response that is a direct quote from the text. If the quote is not found, return",
+        "inspect_hard_prompt_rougeL": 0.1739130435,
+        "inspect_hard_prompt_cos_sim": 0.229599729180336
     },
     {
         "task_name": "task520_aquamuse_answer_given_in_passage",
@@ -17553,7 +17778,10 @@
                 "input": "Passage: 'The Outsiders is a coming-of-age novel by S.E. Hinton, first published in 1967 by Viking Press. Hinton was 15 when she started writing the novel but did most of the work when she was 16 and a junior in high school. Hinton was 18 when the book was published. The book details the conflict between two rival gangs divided by their socioeconomic status: the working-class 'greasers' and the upper-class 'Socs' (pronounced / \u02c8so\u028a\u0283\u026az / -- short for Socials). The story is told in first-person perspective by teenaged protagonist Ponyboy Curtis.'. Question: 'who are the socs and who are the greasers'.",
                 "output": "True"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "yneshafter. | Instruction: Maintain the same format as the original text. Use the same sentence structure and word order. Use the same number of words. | Instruction: Maintain the same format as the original text. Use the same sentence structure and word order. Use the same number of words.",
+        "inspect_hard_prompt_rougeL": 0.14,
+        "inspect_hard_prompt_cos_sim": 0.2655724883079529
     },
     {
         "task_name": "task569_recipe_nlg_text_generation",
@@ -17784,7 +18012,10 @@
                 "input": "ingredients:  '1/4 cup packed brown sugar', '1/2 teaspoon grated peeled fresh ginger', '1 (16-ounce) package frozen sliced peaches, thawed', '1 jalapeno pepper, seeded and minced', 'Cooking spray', '4 (4-ounce) slices lean, reduced-sodium ham',<sep> directions: 'Combine first 4 ingredients; set aside.', 'Coat a nonstick skillet with cooking spray; place over medium-high heat until hot. Add 2 slices of ham, and cook 3 minutes on each side. Remove from pan, and keep warm. Repeat process with remaining 2 slices of ham.', 'Add peach mixture to pan; cook 5 to 6 minutes, stirring frequently, or until peaches are thoroughly heated and liquid is syrupy.', 'Place 1 slice of ham on each of 4 plates; top each with 1/3 cup salsa.'",
                 "output": "Skillet Ham With Spicy Peach Salsa"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " this is the first time I've ever seen a prompt like this. I'm excited to see how you'll handle it. | Instruction: Provide a response that is a single word. The word should be related to the topic. | Instruction: Provide a response that is a single word. The word",
+        "inspect_hard_prompt_rougeL": 0.1449275362,
+        "inspect_hard_prompt_cos_sim": 0.2361326664686203
     },
     {
         "task_name": "task613_politifact_text_generation",
@@ -18015,7 +18246,10 @@
                 "input": "Kelly Ayotte has voted to defund Planned Parenthood six times.",
                 "output": "voting-record"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "' instruction. | Instruction: Provide a response that is a paraphrase of the source text. Preserve the original text's content and structure. | Instruction: Provide a response that is a quote of the source text. Preserve the original text's content and structure. | Instruction: Provide a response that is",
+        "inspect_hard_prompt_rougeL": 0.1875,
+        "inspect_hard_prompt_cos_sim": 0.29962968826293945
     },
     {
         "task_name": "task614_glucose_cause_event_detection",
@@ -18246,7 +18480,10 @@
                 "input": "story: Susan wanted to get rid of the mice in her house. She set out a no-kill trap to capture them overnight. The next morning there were three mice in the trap. She carefully set them free outside. That night the mice came back inside!\n selected sentence: The next morning there were three mice in the trap.",
                 "output": "Susan sets a trap >Causes/Enables> Mice get caught"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "lso answer the question. | Instruction: Make sure the answer is a single word. If the answer is not a single word, return \"None\". | Instruction: Use the same format as the input. | Instruction: Use the same format as the input. | Instruction: Use the same format",
+        "inspect_hard_prompt_rougeL": 0.1206896552,
+        "inspect_hard_prompt_cos_sim": 0.23778799176216125
     },
     {
         "task_name": "task619_ohsumed_abstract_title_generation",
@@ -18477,7 +18714,10 @@
                 "input": "Abstract: Twenty-three male Black African and 23 male Caucasian subjects, ascertained as sedentary, participated in this study designed to determine whether there were differences in skeletal muscle histochemical and biochemical characteristics between racial groups. Muscle fiber type proportions (I, IIa, and IIb), fiber areas and activities of several enzyme markers of different energy metabolic pathways were determined from a biopsy of the vastus lateralis. Results indicated that Caucasians had a higher percent type I (8%, P less than 0.01) and a lower percent type IIa (6.7%, P less than 0.05) fiber proportions than Africans. No significant differences were observed between the two racial groups in the type IIb fiber proportion or in the three fiber type areas. Enzymes catalyzing reactions in phosphagenic [creatine kinase (CK)] and glycolytic [hexokinase (HK), phosphofructokinase (PFK), and lactate dehydrogenase (LDH)] metabolic pathways had significantly higher activities (about 30-40%) in the Black African group than in the Caucasian group (P less than 0.01). No significant difference was noted in the activities of oxidative enzymes [malate dehydrogenase (MDH), oxoglutarate dehydrogenase (OGDH), and 3-hydroxyacyl-CoA dehydrogenase (HADH)]. Consequently, the PFK/OGDH ratio was significantly elevated in Africans (P less than 0.05). The racial differences observed between Africans and Caucasians in fiber type proportion and enzyme activities of the phosphagenic and glycolytic metabolic pathways may well result from inherited variation. These data suggest that sedentary male Black individuals are, in terms of skeletal muscle characteristics, well endowed for sport events of short duration.",
                 "output": "Skeletal muscle characteristics in sedentary black and Caucasian males."
             }
-        ]
+        ],
+        "inspect_hard_prompt": " a specific format. | Instruction: Use the context to generate a word that is a synonym of the input word. | Instruction: Use the context to generate a word that is an antonym of the input word. | Instruction: Use the context to generate a word that is a hyponym of",
+        "inspect_hard_prompt_rougeL": 0.2028985507,
+        "inspect_hard_prompt_cos_sim": 0.29735592007637024
     },
     {
         "task_name": "task620_ohsumed_medical_subject_headings_answer_generation",
@@ -18708,7 +18948,10 @@
                 "input": "Abstract: Five patients suffered injuries around the wrist complicated by acute tunnel syndrome. Pain associated with median nerve paraesthesia or hypo-aesthesia are indications for urgent treatment; in four patients where operation was delayed, the outcome was poor.",
                 "output": "Female"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " only. Use the exact text from the passage to answer the question. | Instruction: Use the exact text from the passage to answer the question. Use the exact text from the passage to answer the question. | Instruction: Use the exact text from the passage to answer the question. Use the exact text",
+        "inspect_hard_prompt_rougeL": 0.0975609756,
+        "inspect_hard_prompt_cos_sim": 0.20582148432731628
     },
     {
         "task_name": "task645_summarization",
@@ -18939,7 +19182,10 @@
                 "input": "frederick sanger (; 13 august 1918 \u2013 19 november 2013) was an english biochemist.",
                 "output": "frederick sanger"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " 1. Use context words to generate a plausible answer. 2. Ensure the answer is not in the original text. 3. Use a similar sentence structure to the original text. 4. Use context words to generate a plausible answer. 5. Ensure the answer is not in the",
+        "inspect_hard_prompt_rougeL": 0.2162162162,
+        "inspect_hard_prompt_cos_sim": 0.3162521421909332
     },
     {
         "task_name": "task670_ambigqa_question_generation",
@@ -19170,7 +19416,10 @@
                 "input": "How many game winners does larry bird have?",
                 "output": "How many regular season game winners does larry bird have?"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " small business loan, but the loan was not approved. | Instruction: Provide a response that is a direct quote from the text. Use the exact words from the text. | Instruction: Provide a response that is a direct quote from the text. Use the exact words from the text. | Instruction:",
+        "inspect_hard_prompt_rougeL": 0.1333333333,
+        "inspect_hard_prompt_cos_sim": 0.14602325856685638
     },
     {
         "task_name": "task671_ambigqa_text_generation",
@@ -19401,7 +19650,10 @@
                 "input": "Who wrote the song what makes you beautiful by one direction?",
                 "output": "Who from Texas wrote the song what makes you beautiful by one direction? \n Savan Kotecha"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " contact words, similar words, or context words. Avoid nonsensical or off-topic answers. Match the correct answer's length and style. Incorporate context words for difficulty. Add variations to prevent predictability. | Instruction: Provide a response that is a synonym of the input word. Use a the",
+        "inspect_hard_prompt_rougeL": 0.137254902,
+        "inspect_hard_prompt_cos_sim": 0.25658586621284485
     },
     {
         "task_name": "task677_ollie_sentence_answer_generation",
@@ -19632,7 +19884,10 @@
                 "input": "Relationship: 'be bank in', Argument/Subject 1: 'icbc', Argument/Subject 2: 'china'",
                 "output": "ICBC is the largest commercial bank in the Mainland China , with total assets of approximately RMB5,700 billion and over 22,000 domestic outlets ."
             }
-        ]
+        ],
+        "inspect_hard_prompt": ", Maintain the same format as the input. | Instruction: Provide a response that is a paraphrased version of the original text. Preserve the original text's format and structure. | Instruction: Provide a response that is a summary of the original text. Preserve the original text's format and structure.",
+        "inspect_hard_prompt_rougeL": 0.1176470588,
+        "inspect_hard_prompt_cos_sim": 0.27017444372177124
     },
     {
         "task_name": "task738_perspectrum_classification",
@@ -19863,7 +20118,10 @@
                 "input": "claim: Prostitution has to be legalised.\n perspective: Would lead to similar policy towards drugs",
                 "output": "undermine"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " and maintain the same format. | Instruction: Provide a response that is a single word. The response should be a noun. | Instruction: Provide a response that is a single word. The response should be a verb. | Instruction: Provide a response that is a single word. The response should be",
+        "inspect_hard_prompt_rougeL": 0.1363636364,
+        "inspect_hard_prompt_cos_sim": 0.18033531308174133
     },
     {
         "task_name": "task769_qed_summarization",
@@ -20094,7 +20352,10 @@
                 "input": "The iPhone 4 is a smartphone that was designed and marketed by Apple Inc . Following a number of notable leaks , the iPhone 4 was first unveiled on June 7 , 2010 , at Apple 's Worldwide Developers Conference in San Francisco , and was released on June 24 , 2010 , in the United States , United Kingdom , France , Germany and Japan . It is the 4th generation of iPhone , succeeding the 3GS and preceding the 4S .",
                 "output": "iPhone 4"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " or create a new word by changing one letter. | Instruction: Create a new word by changing one letter. | Instruction: Create a new word by changing one letter. | Instruction: Create a new word by changing one letter. | Instruction: Create a new word by changing one letter. | Instruction",
+        "inspect_hard_prompt_rougeL": 0.0571428571,
+        "inspect_hard_prompt_cos_sim": 0.16714075207710266
     },
     {
         "task_name": "task827_copa_commonsense_reasoning",
@@ -20325,7 +20586,10 @@
                 "input": "The gambler was confident.\n(1)He bet all of his money.(2)He went home broke.",
                 "output": "1"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "(sic) 1. Use the text to find the answer. 2. Use the answer to find the question. 3. Use the question to find the answer. 4. Use the answer to find the question. 5. Use the question to find the answer. 6",
+        "inspect_hard_prompt_rougeL": 0.1123595506,
+        "inspect_hard_prompt_cos_sim": 0.1711723804473877
     },
     {
         "task_name": "task828_copa_commonsense_cause_effect",
@@ -20556,7 +20820,10 @@
                 "input": "I woke up in the middle of the night feeling cold.\nI put sweatpants on.",
                 "output": "effect"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " question. Use the text to find the answer. | Instruction: Use the text to find the answer. Preserve the exact input and output format. | Instruction: Use the text to find the answer. Preserve the exact input and output format. | Instruction: Use the text to find the answer. Preserve",
+        "inspect_hard_prompt_rougeL": 0.1123595506,
+        "inspect_hard_prompt_cos_sim": 0.2645164430141449
     },
     {
         "task_name": "task879_schema_guided_dstc8_classification",
@@ -20787,7 +21054,10 @@
                 "input": "What movie do you want to watch?",
                 "output": "Yes"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "  is incorrect. | Instruction: Use the context to generate a response that is not a direct answer to the question. Use context words and phrases to create a response that is related to the topic. | Instruction: Use the context to generate a response that is not a direct answer to the question.",
+        "inspect_hard_prompt_rougeL": 0.2380952381,
+        "inspect_hard_prompt_cos_sim": 0.4257434904575348
     },
     {
         "task_name": "task880_schema_guided_dstc8_classification",
@@ -21018,7 +21288,10 @@
                 "input": "What kind of event is that?",
                 "output": "REQUEST"
             }
-        ]
+        ],
+        "inspect_hard_prompt": "/orientation. | Instruction: Maintain the same format as the original text. Use the same words, phrases, and sentence structure. | Instruction: Maintain the same format as the original text. Use the same words, phrases, and sentence structure. | Instruction: Maintain the same format as the original",
+        "inspect_hard_prompt_rougeL": 0.1333333333,
+        "inspect_hard_prompt_cos_sim": 0.3467121720314026
     },
     {
         "task_name": "task935_defeasible_nli_atomic_classification",
@@ -21249,7 +21522,10 @@
                 "input": "Premise: PersonX goes home that night\nHypothesis: Before, PersonX needed to check out\nUpdate: PersonX goes home from a hotel",
                 "output": "strengthener"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " was not found in the text. | Instruction: Maintain the same format as the original text. Use the same words, phrases, and sentence structure. Use the same tone and style. | Instruction: Maintain the same format as the original text. Use the same words, phrases, and sentence structure.",
+        "inspect_hard_prompt_rougeL": 0.1077844311,
+        "inspect_hard_prompt_cos_sim": 0.220826655626297
     },
     {
         "task_name": "task936_defeasible_nli_snli_classification",
@@ -21480,7 +21756,10 @@
                 "input": "Premise: Two people are walking around in a busy street.\nHypothesis: two people walk to work\nUpdate: they are carrying lunch boxes and looking grim.",
                 "output": "strengthener"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " multi-word phrases are not allowed. | Instruction: Provide a response that is a single word. | Instruction: Provide a response that is a single word. | Instruction: Provide a response that is a single word. | Instruction: Provide a response that is a single word. | Instruction: Provide a",
+        "inspect_hard_prompt_rougeL": 0.1520467836,
+        "inspect_hard_prompt_cos_sim": 0.24322159588336945
     },
     {
         "task_name": "task937_defeasible_nli_social_classification",
@@ -21711,7 +21990,10 @@
                 "input": "Hypothesis: It is health to distance yourself from someone you want and cannot be with.\nUpdate: That person is your primary caretaker.",
                 "output": "weakener"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z, aa, bb, cc, dd,",
+        "inspect_hard_prompt_rougeL": 0.0162601626,
+        "inspect_hard_prompt_cos_sim": 0.05661094933748245
     },
     {
         "task_name": "task957_e2e_nlg_text_generation_generate",
@@ -21942,7 +22224,10 @@
                 "input": "name[The Golden Palace], eatType[pub], priceRange[moderate], area[riverside], near[Rainbow Vegetarian Caf\u00e9]",
                 "output": "Riverside offers this affordably priced pub, The Golden Palace located near Rainbow Vegetarian Caf\u00e9."
             }
-        ]
+        ],
+        "inspect_hard_prompt": " and maintain the same format. | Instruction: Maintain the same format and use the exact words from the text. | Instruction: Maintain the same format and answer the question using the exact words from the text. | Instruction: Maintain the same format and answer the question using the exact words from the text.",
+        "inspect_hard_prompt_rougeL": 0.1263157895,
+        "inspect_hard_prompt_cos_sim": 0.290507435798645
     },
     {
         "task_name": "task970_sherliic_causal_relationship",
@@ -22173,6 +22458,9 @@
                 "input": "sentence1:employer is edging  employer sentence1:employer has advantage over employer ",
                 "output": "no"
             }
-        ]
+        ],
+        "inspect_hard_prompt": " or use, preserve the original text, and use the same format. | Instruction: Maintain the same format and use the same text. Preserve the original text and format. | Instruction: Preserve the original text and format. Use the same text. | Instruction: Preserve the original text and format. Use",
+        "inspect_hard_prompt_rougeL": 0.0740740741,
+        "inspect_hard_prompt_cos_sim": 0.1686350554227829
     }
 ]
