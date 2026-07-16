@@ -30,6 +30,7 @@ def build_task_records(split_df, num_examples: int, seed: int, num_train_instanc
         val_rows = task_df.iloc[split_idx:]
 
         train_instances = train_rows[['input', 'output']].head(num_train_instances).to_dict('records')
+        train_instances = train_rows[['input', 'output']].to_dict('records')
         val_instances = val_rows[['input', 'output']].to_dict('records')
 
         # reduced_instructions explosion is disabled -> one instruction per task
@@ -119,8 +120,8 @@ def run(args_list):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_path", type=str, default="SoftPromptTranslator/SUPER-NATURALINSTRUCTIONS-english-filtered")
-    parser.add_argument("--trained_soft_prompts_dir", type=str, default="./trained_soft_prompts/General-DoD")
-    parser.add_argument("--compiled_dataset_dir", type=str, default="./datasets/mapper_training_dataset/General-DoD")
+    parser.add_argument("--trained_soft_prompts_dir", type=str, default="./shared/trained_soft_prompts/General-DoD")
+    parser.add_argument("--compiled_dataset_dir", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD-DPO")
     parser.add_argument("--num_examples", type=int, default=500, help="Per-task cap; MUST match train_softprompts.py to reproduce its val split")
     parser.add_argument("--num_train_instances", type=int, default=5, help="Number of training-split instances to store per task")
     parser.add_argument("--seed", type=int, default=47)
