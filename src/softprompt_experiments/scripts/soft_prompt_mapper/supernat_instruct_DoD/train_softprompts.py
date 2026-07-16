@@ -312,7 +312,7 @@ def run(args_list):
                 tqdm.write(f"No existing soft prompt found at {old_softprompt_path}, initializing from scratch for {task_name}.")
 
         # Init Optimizer with only params from Soft Prompt
-        optimizer = torch.optim.AdamW(soft_prompt.parameters(), lr=LR)
+        optimizer = torch.optim.AdamW(soft_prompt.parameters(), lr=LR, weight_decay = 0.05)
 
         # ┌───────────────────────────────────────────────┐
         # │                 TRAINING LOOP                 │

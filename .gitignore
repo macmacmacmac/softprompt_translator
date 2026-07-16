@@ -37,5 +37,4 @@ visualizations/
 !*.ipynb
 
 
-!verbalizations/.gitkeep
-!verbalizations/master_verbalizations.json
+!verbalizations/*.json
