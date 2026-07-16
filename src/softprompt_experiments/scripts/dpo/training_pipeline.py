@@ -7,6 +7,7 @@ from peft import PeftModel, LoraConfig, get_peft_model, TaskType
 from tqdm import tqdm
 import evaluate
 import ipdb
+import torch.nn.Functional as F
 
 from softprompt_experiments.scripts.dpo import DPOCollator
 
@@ -28,6 +29,55 @@ class DPODataset(Dataset):
             self.data[idx]["logp_ref_z_W"],
             self.data[idx]["logp_ref_z_L"],
         )
+    
+
+def get_logprob(soft_prompts, tokenized, model, llama_word_embeddings):
+
+    # Unpack tokenized
+    input_ids = tokenized["input_ids"].to(DEVICE)                                   # (batch_size, seq_len)
+    attention_mask = tokenized["attention_mask"].to(DEVICE)                         # (batch_size, seq_len)
+    labels = tokenized["labels"].to(DEVICE)                                         # (batch_size, seq_len)
+    
+    # get dims
+    batchsize, softlen, _ = soft_prompts.shape
+
+    # Get embeddings for the discrete text
+    with torch.no_grad():
+        text_embeds = llama_word_embeddings(input_ids).detach()                 # (batch_size, seq_len, embed_dim)
+    
+    # Concatenate Embeddings: [Continuous Soft Prompt + Discrete Hard Prompt]
+    inputs_embeds = torch.cat([soft_prompts, text_embeds], dim=1)               # (batch_size, soft_prompt_len + seq_len, embed_dim)
+    
+    # Concatenate Attention Masks (Add `1`s for the soft prompt so Llama Model pays attention to it)
+    soft_prompt_mask = torch.ones((batchsize, softlen), dtype=attention_mask.dtype, device=DEVICE)   # (batch_size, soft_prompt_len)
+    full_attention_mask = torch.cat([soft_prompt_mask, attention_mask], dim=1)           # (batch_size, soft_prompt_len + seq_len)
+    
+    # Concatenate Labels (-100s for the soft prompt so loss isn't calculated on it)
+    soft_prompt_labels = torch.full((batchsize, softlen), -100, dtype=labels.dtype, device=DEVICE)         # (batch_size, soft_prompt_len)
+    full_labels = torch.cat([soft_prompt_labels, labels], dim=1)                         # (batch_size, soft_prompt_len + seq_len)
+    
+    # Forward Pass
+    logits = model( 
+        inputs_embeds = inputs_embeds,
+        attention_mask = full_attention_mask,
+        labels = full_labels
+    ).logits # [B, T, V]
+
+    vocab_size = logits.shape[-1]
+
+    # Get log probs
+    log_prob = -F.cross_entropy(
+        logits[:, :-1].reshape(-1, vocab_size),
+        labels[:, 1:].reshape(-1),
+        ignore_index=-100,
+        reduction="sum",
+    )
+
+    log_prob = F.log_softmax(logits[:, :-1], dim=-1)
+    log_prob = -torch.gather(log_prob, dim=-1, index=labels[:, 1:].unsqueeze(-1))
+
+    return log_prob
+
 
 # Driver Code
 def run(args_list=None):
@@ -45,26 +95,24 @@ def run(args_list=None):
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--mapper_dataset_path", type=str, default="./datasets/mapper_training_dataset/General-DoD")
-    parser.add_argument("--lora_save_dir", type=str, default="./mapper_lora_weights")
-    parser.add_argument("--lora_rank", type=int, default=4)
-    parser.add_argument("--lora_dropout", type=float, default=0.1)
+    parser.add_argument("--mapper_read_dir", type=str, default="./mapper_lora_weights")
+    parser.add_argument("--dpo_save_dir", type=str, default="./mapper_lora_weights")
     parser.add_argument("--optim_weight_decay", type=float, default=0.1) 
+    parser.add_argument("--beta", type=float, default=1.0) 
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables
     MODEL_NAME = args.model_name
     MAPPER_DATASET_PATH = args.mapper_dataset_path
-    DATASET_NAME = MAPPER_DATASET_PATH.split('/')[-1]
-    LORA_SAVE_DIR = os.path.join(args.lora_save_dir, DATASET_NAME, MODEL_NAME)
+    DPO_MAPPER_SAVE_PATH = args.dpo_save_dir
     LR = args.lr
     EPOCHS = args.epochs
     BATCH_SIZE = args.batch_size
-    NUM_TOKENS = args.num_tokens
-    LORA_RANK = args.lora_rank
-    LORA_DROPOUT = args.lora_dropout
     OPTIM_WEIGHT_DECAY = args.optim_weight_decay
+    BETA = args.beta
 
     # Determine DEVICE and DTYPE
+    global DEVICE
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     # DEVICE = "cpu"
     DTYPE = torch.bfloat16 if DEVICE == "cuda" else torch.float32
@@ -73,9 +121,6 @@ def run(args_list=None):
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     tokenizer.pad_token = tokenizer.eos_token       # Llama doesn't have a default pad token, so we map it to EOS
 
-    # Init Rouge Metric
-    ROUGE_METRIC = evaluate.load("rouge")
-
     # ┌───────────────────────────────────────────────┐
     # │                 LORA MODEL PREP               │
     # └───────────────────────────────────────────────┘
@@ -83,10 +128,10 @@ def run(args_list=None):
     base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
     base_model.gradient_checkpointing_enable()
 
-    print(f"Loading LoRA adapter from {LORA_SAVE_DIR}...")
+    print(f"Loading LoRA adapter from {MAPPER_DATASET_PATH}...")
     model = PeftModel.from_pretrained(
         base_model,
-        LORA_SAVE_DIR,
+        MAPPER_DATASET_PATH,
         is_trainable=True,   # important: continue training
     )    
 
@@ -143,7 +188,6 @@ def run(args_list=None):
         model.train()
 
         total_train_loss = 0
-        total_train_rouge_l = 0
         
         # Init Progress Bar
         dataset_pbar = tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{EPOCHS} [Train]")
@@ -154,188 +198,90 @@ def run(args_list=None):
             
             # Move inputs to GPU
             # "z_prime": soft prompt tensors (batch, seq_len, emb_dim)
-            # "z_W_tokenized": z_W_tokenized {'}
-            # "z_L_tokenized": z_L_tokenized,
-            # "log_p_ref_z_W": logp_ref_z_W,
-            # "log_p_ref_z_L": logp_ref_z_L
+            # "z_W_tokenized": z_W_tokenized {'input_ids', 'attention_mask', 'labels'}
+            # "z_L_tokenized": z_L_tokenized {'input_ids', 'attention_mask', 'labels'}
+            # "log_p_ref_z_W": logp_ref_z_W (batch)
+            # "log_p_ref_z_L": logp_ref_z_L (batch)
 
-            soft_prompts = batch["soft_prompts"].to(DEVICE, dtype=DTYPE)                # (batch_size, soft_prompt_len, embed_dim)
-            input_ids = batch["input_ids"].to(DEVICE)                                   # (batch_size, seq_len)
-            attention_mask = batch["attention_mask"].to(DEVICE)                         # (batch_size, seq_len)
-            labels = batch["labels"].to(DEVICE)                                         # (batch_size, seq_len)
-            
-            # Get embeddings for the discrete text
-            with torch.no_grad():
-                text_embeds = llama_word_embeddings(input_ids).detach()                 # (batch_size, seq_len, embed_dim)
-            
-            # Concatenate Embeddings: [Continuous Soft Prompt + Discrete Hard Prompt]
-            inputs_embeds = torch.cat([soft_prompts, text_embeds], dim=1)               # (batch_size, soft_prompt_len + seq_len, embed_dim)
-            
-            # Concatenate Attention Masks (Add `1`s for the soft prompt so Llama Model pays attention to it)
-            soft_prompt_mask = torch.ones((soft_prompts.shape[0], NUM_TOKENS), dtype=attention_mask.dtype, device=DEVICE)   # (batch_size, soft_prompt_len)
-            full_attention_mask = torch.cat([soft_prompt_mask, attention_mask], dim=1)           # (batch_size, soft_prompt_len + seq_len)
-            
-            # Concatenate Labels (-100s for the soft prompt so loss isn't calculated on it)
-            soft_prompt_labels = torch.full((labels.shape[0], NUM_TOKENS), -100, dtype=labels.dtype, device=DEVICE)         # (batch_size, soft_prompt_len)
-            full_labels = torch.cat([soft_prompt_labels, labels], dim=1)                         # (batch_size, soft_prompt_len + seq_len)
-            
-            # Forward Pass
-            outputs = model(
-                inputs_embeds = inputs_embeds,
-                attention_mask = full_attention_mask,
-                labels = full_labels
-            )
-            
-            # Extract the CE Loss
-            loss = outputs.loss
+            z_prime = batch["z_prime"].to(DEVICE, dtype=DTYPE) # (batch_size, soft_prompt_len, embed_dim)
+           
+            z_W_tokenized = batch["z_W_tokenized"].to(DEVICE, dtype=DTYPE)
+            z_L_tokenized = batch["z_L_tokenized"].to(DEVICE, dtype=DTYPE)
+
+            log_p_ref_z_W = batch["log_p_ref_z_W"].to(DEVICE, dtype=DTYPE)
+            log_p_ref_z_L = batch["log_p_ref_z_L"].to(DEVICE, dtype=DTYPE)
+
+            log_p_theta_z_W = get_logprob(z_prime, z_W_tokenized, model, llama_word_embeddings)
+            log_p_theta_z_L = get_logprob(z_prime, z_L_tokenized, model, llama_word_embeddings)
+
+            # DPO
+            loss = -F.logsigmoid(
+                BETA * (
+                    (log_p_theta_z_W - log_p_ref_z_W) 
+                    - (log_p_theta_z_L - log_p_ref_z_L)
+                )
+            ).mean()
+
+            total_train_loss += loss.item()
 
             # Backpropagate Loss and Update the Parameters
             loss.backward()
             optimizer.step()
-
-            # TEACHER FORCING
-            # Extract the logits
-            logits = outputs.logits
-
-            # Shift logits and labels so token i predicts i + 1
-            shifted_logits = logits[..., :-1, :].contiguous()
-            shifted_labels = full_labels[..., 1:].contiguous()
-
-            # Get the predicted token ids
-            preds = torch.argmax(shifted_logits, dim = -1)
-
-            # Positions with label -100 (soft prompt + padding) carry no supervision;
-            # mask the preds there too, else junk tokens leak into the decoded strings
-            valid_positions = shifted_labels != -100
-            preds = torch.where(
-                valid_positions, 
-                preds, 
-                tokenizer.pad_token_id
-            )
-
-            # Replace -100 in the labels as we can't decode -100
-            shifted_labels = torch.where(
-                valid_positions,
-                shifted_labels,
-                tokenizer.pad_token_id
-            )
-
-            # Decode preds and labels into strings
-            # skip_special_tokens=True removes EOS and Padding tokens from the text
-            decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
-            decoded_labels = tokenizer.batch_decode(shifted_labels, skip_special_tokens=True)
-
-            # Calculate ROUGE-L for the current batch
-            rouge_results = ROUGE_METRIC.compute(
-                predictions=decoded_preds, 
-                references=decoded_labels, 
-                use_stemmer=True
-            )
-            
-            # Accumulate metrics (initialize `total_train_rouge_l = 0` before the epoch instead of tokens)
-            current_rouge_l = rouge_results['rougeL']
-            total_train_rouge_l += current_rouge_l
-            total_train_loss += loss.item()
-            
+        
             # Update progress bar
             dataset_pbar.set_postfix({"Loss": f"{loss.item():.4f}"})
 
             
         avg_train_loss = total_train_loss / len(train_dataloader)
-        avg_train_rouge_l = total_train_rouge_l / len(train_dataloader)
         
         # ┌───────────────────────────────────────────────┐
         # │                 VALIDATION LOOP               │
         # └───────────────────────────────────────────────┘
         model.eval()
         total_val_loss = 0
-        total_val_rouge_l = 0
         
         # Freeze all weights
         with torch.no_grad():
-            for batch in tqdm(val_dataloader, desc=f"Epoch {epoch+1}/{EPOCHS} [Val]"):
+            for batch in tqdm(val_dataloader, desc=f"Epoch {epoch+1}/{EPOCHS} [Val]"):                
+                # Move inputs to GPU
+                # "z_prime": soft prompt tensors (batch, seq_len, emb_dim)
+                # "z_W_tokenized": z_W_tokenized {'input_ids', 'attention_mask', 'labels'}
+                # "z_L_tokenized": z_L_tokenized {'input_ids', 'attention_mask', 'labels'}
+                # "log_p_ref_z_W": logp_ref_z_W (batch)
+                # "log_p_ref_z_L": logp_ref_z_L (batch)
 
-                # Move inputs to DEVICE
-                soft_prompts = batch["soft_prompts"].to(DEVICE, dtype=DTYPE)            # (batch_size, soft_prompt_len, embed_dim)
-                input_ids = batch["input_ids"].to(DEVICE)                               # (batch_size, seq_len)
-                attention_mask = batch["attention_mask"].to(DEVICE)                     # (batch_size, seq_len)
-                labels = batch["labels"].to(DEVICE)                                     # (batch_size, seq_len)
-                
-                # Get the text embeddings from Llama for the soft prompt token ids
-                text_embeds = llama_word_embeddings(input_ids).detach()                 # (batch_size, seq_len, embed_dim)
+                z_prime = batch["z_prime"].to(DEVICE, dtype=DTYPE) # (batch_size, soft_prompt_len, embed_dim)
+            
+                z_W_tokenized = batch["z_W_tokenized"].to(DEVICE, dtype=DTYPE)
+                z_L_tokenized = batch["z_L_tokenized"].to(DEVICE, dtype=DTYPE)
 
-                # Concatenate Embeddings: [Soft Prompt + Input Text]
-                inputs_embeds = torch.cat([soft_prompts, text_embeds], dim=1)           # (batch_size, soft_prompt_len + seq_len, embed_dim)
-                
-                # Concatenate Attention Masks: Add `1`s so Llama pays attention to the soft prompt
-                soft_prompt_mask = torch.ones((soft_prompts.shape[0], NUM_TOKENS), dtype=attention_mask.dtype, device=DEVICE)   # (batch_size, soft_prompt_len)
-                full_attention_mask = torch.cat([soft_prompt_mask, attention_mask], dim=1)  # (batch_size, soft_prompt_len + seq_len)
-                
-                # Concatenate Labels (-100s for the soft prompt so loss isn't calculated on it)
-                soft_prompt_labels = torch.full((labels.shape[0], NUM_TOKENS), -100, dtype=labels.dtype, device=DEVICE)         # (batch_size, soft_prompt_len)
-                full_labels = torch.cat([soft_prompt_labels, labels], dim=1)                # (batch_size, soft_prompt_len + seq_len)
-                
-                # Forward Pass
-                outputs = model(
-                    inputs_embeds = inputs_embeds,
-                    attention_mask = full_attention_mask,
-                    labels = full_labels
-                )
+                log_p_ref_z_W = batch["log_p_ref_z_W"].to(DEVICE, dtype=DTYPE)
+                log_p_ref_z_L = batch["log_p_ref_z_L"].to(DEVICE, dtype=DTYPE)
 
-                # Accumulate validation loss
-                total_val_loss += outputs.loss.item()
+                log_p_theta_z_W = get_logprob(z_prime, z_W_tokenized, model, llama_word_embeddings)
+                log_p_theta_z_L = get_logprob(z_prime, z_L_tokenized, model, llama_word_embeddings)
 
-                # Calculate Validation Accuracy
-                logits = outputs.logits
-                shifted_logits = logits[..., :-1, :].contiguous()
-                shifted_labels = full_labels[..., 1:].contiguous()
+                # DPO
+                loss = -F.logsigmoid(
+                    BETA * (
+                        (log_p_theta_z_W - log_p_ref_z_W) 
+                        - (log_p_theta_z_L - log_p_ref_z_L)
+                    )
+                ).mean()
 
-                # Get the predicted token ids
-                preds = torch.argmax(shifted_logits, dim = -1)
-
-                # Positions with label -100 (soft prompt + padding) carry no supervision;
-                # mask the preds there too, else junk tokens leak into the decoded strings
-                valid_positions = shifted_labels != -100
-                preds = torch.where(
-                    valid_positions, 
-                    preds, 
-                    tokenizer.pad_token_id
-                )
-
-                # Replace -100 in the labels as we can't decode -100
-                shifted_labels = torch.where(
-                    valid_positions,
-                    shifted_labels,
-                    tokenizer.pad_token_id
-                )
-
-                # Decode preds and labels into strings
-                # skip_special_tokens=True removes EOS and Padding tokens from the text
-                decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
-                decoded_labels = tokenizer.batch_decode(shifted_labels, skip_special_tokens=True)
-
-                # Calculate ROUGE-L for the current batch
-                rouge_results = ROUGE_METRIC.compute(
-                    predictions=decoded_preds, 
-                    references=decoded_labels, 
-                    use_stemmer=True
-                )
-                
-                # Accumulate metrics (initialize `total_train_rouge_l = 0` before the epoch instead of tokens)
-                current_rouge_l = rouge_results['rougeL']
-                total_val_rouge_l += current_rouge_l
+                total_val_loss += loss.item()
+            
                 
         avg_val_loss = total_val_loss / len(val_dataloader)
-        avg_val_rouge_l = total_val_rouge_l / len(val_dataloader)
 
         tqdm.write(f"\nEpoch {epoch + 1} Summary:")
-        tqdm.write(f"Train -> Loss: {avg_train_loss: .4f} | ROUGE-L: {avg_train_rouge_l: .2f}")
-        tqdm.write(f"Val   -> Loss: {avg_val_loss: .4f} | ROUGE-L: {avg_val_rouge_l: .2f}\n")
+        tqdm.write(f"Train -> Loss: {avg_train_loss: .4f}")
+        tqdm.write(f"Val   -> Loss: {avg_val_loss: .4f}")
 
     # ┌───────────────────────────────────────────────┐
     # │               SAVE LORA ADAPTERS              │
     # └───────────────────────────────────────────────┘
-    os.makedirs(LORA_SAVE_DIR, exist_ok=True)
-    model.save_pretrained(LORA_SAVE_DIR)
-    tokenizer.save_pretrained(LORA_SAVE_DIR)
-    print(f"Mapper training complete! PEFT LoRA weights saved to {LORA_SAVE_DIR}")
+    os.makedirs(DPO_MAPPER_SAVE_PATH, exist_ok=True)
+    model.save_pretrained(DPO_MAPPER_SAVE_PATH)
+    tokenizer.save_pretrained(DPO_MAPPER_SAVE_PATH)
+    print(f"Mapper training complete! PEFT LoRA weights saved to {DPO_MAPPER_SAVE_PATH}")
