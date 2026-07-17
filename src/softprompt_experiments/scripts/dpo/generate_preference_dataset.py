@@ -1,5 +1,6 @@
 import os
 import argparse
+import contextlib
 import torch
 import torch.nn.functional as F
 import ipdb
@@ -206,51 +207,64 @@ def get_logprob_of_output_given_prompt(
         batch_input_ids.append(row_ids)
         batch_labels.append(row_labels)
 
-    # Manually right-pad the batch to the max sequence length
-    max_len = max(len(ids) for ids in batch_input_ids)
-    input_ids, attention_mask, labels = [], [], []
-    for ids, lbls in zip(batch_input_ids, batch_labels):
-        pad_len = max_len - len(ids)
-        input_ids.append(ids + [tokenizer.pad_token_id] * pad_len)
-        attention_mask.append([1] * len(ids) + [0] * pad_len)
-        labels.append(lbls + [-100] * pad_len)
+    # Score in micro-batches of SCORE_BATCH_SIZE rows instead of one giant forward pass —
+    # keeps peak memory (activations + fp32 logits over the full vocab) bounded regardless
+    # of how many train instances a task has
+    per_row_scores = []
+    scoring_ctx = model.disable_adapter() if SHARED_SCORE_MODEL else contextlib.nullcontext()
+    with scoring_ctx:
+        for start in range(0, len(batch_input_ids), SCORE_BATCH_SIZE):
+            chunk_ids = batch_input_ids[start:start + SCORE_BATCH_SIZE]
+            chunk_labels = batch_labels[start:start + SCORE_BATCH_SIZE]
 
-    input_ids = torch.tensor(input_ids, device=DEVICE)              # (batch_size, seq_len)
-    attention_mask = torch.tensor(attention_mask, device=DEVICE)    # (batch_size, seq_len)
-    labels = torch.tensor(labels, device=DEVICE)                    # (batch_size, seq_len)
+            # Manually right-pad this chunk to its own max sequence length
+            max_len = max(len(ids) for ids in chunk_ids)
+            input_ids, attention_mask, labels = [], [], []
+            for ids, lbls in zip(chunk_ids, chunk_labels):
+                pad_len = max_len - len(ids)
+                input_ids.append(ids + [tokenizer.pad_token_id] * pad_len)
+                attention_mask.append([1] * len(ids) + [0] * pad_len)
+                labels.append(lbls + [-100] * pad_len)
 
-    # Single forward pass over the whole batch (no `labels=` kwarg — we hand-compute log-probs)
-    with torch.no_grad():
-        outputs_hf = model(input_ids=input_ids, attention_mask=attention_mask)
-        logits = outputs_hf.logits                           # (batch_size, seq_len, vocab_size)
+            input_ids = torch.tensor(input_ids, device=DEVICE)              # (chunk_size, seq_len)
+            attention_mask = torch.tensor(attention_mask, device=DEVICE)    # (chunk_size, seq_len)
+            labels = torch.tensor(labels, device=DEVICE)                    # (chunk_size, seq_len)
 
-    # Per batch: sum of log P(token | preceding tokens) over the scored (non -100) positions                                                                                                         
-    summed_log_probs = _sum_sequence_logprob(logits, labels)                # (batch_size,)                                                                                                        
-                                                                                                                                                                                                
-    # Count scored tokens per row; [:, 1:] mirrors the shift inside _sum_sequence_logprob                                                                                                          
-    # (position 0 is never scored — nothing precedes it)                                                                                                                                           
-    token_counts = (labels[:, 1:] != -100).sum(dim=-1)                      # (batch_size,)                                                                                                        
-                                                                                                                                                                                                
-    # Average per token, so instances with longer outputs aren't systematically more negative                                                                                                      
-    return summed_log_probs / token_counts
+            # Single forward pass over this chunk (no `labels=` kwarg — we hand-compute log-probs)
+            with torch.no_grad():
+                outputs_hf = model(input_ids=input_ids, attention_mask=attention_mask)
+                logits = outputs_hf.logits                           # (chunk_size, seq_len, vocab_size)
+
+            # Per row: sum of log P(token | preceding tokens) over the scored (non -100) positions
+            summed_log_probs = _sum_sequence_logprob(logits, labels)                # (chunk_size,)
+
+            # Count scored tokens per row; [:, 1:] mirrors the shift inside _sum_sequence_logprob
+            # (position 0 is never scored — nothing precedes it)
+            token_counts = (labels[:, 1:] != -100).sum(dim=-1)                      # (chunk_size,)
+
+            # Average per token, so instances with longer outputs aren't systematically more negative
+            per_row_scores.append(summed_log_probs / token_counts)
+
+    # Concatenate chunk results back into a single (num_rows,) tensor, preserving input order
+    return torch.cat(per_row_scores, dim=0)
 
 
 def _sum_sequence_logprob(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
     # Shift so that logits at position i predict the token at position i+1
-    shift_logits = logits[:, :-1, :]            # (batch_size, seq_len, vocab_size)
-    shift_labels = labels[:, 1:]                # (batch_size, seq_len)
+    shift_logits = logits[:, :-1, :]            # (batch_size, seq_len - 1, vocab_size)
+    shift_labels = labels[:, 1:]                # (batch_size, seq_len - 1)
 
-    valid_mask = shift_labels != -100
-
-    # Convert logits to log-probabilities over the vocab at every position
-    log_probs = F.log_softmax(shift_logits, dim=-1)     # (batch_size, seq_len, vocab_size)
-
-    # Pick out the log-prob assigned to each true next token (clamp -100 to 0 first,
-    # since gather can't index with -100; those positions get zeroed out by valid_mask next)
-    token_log_probs = torch.gather(log_probs, 2, shift_labels.clamp(min=0).unsqueeze(-1)).squeeze(-1)   # (batch_size, seq_len)
+    # Fused cross-entropy = -log P(label); ignore_index zeroes the -100 positions
+    # without materializing a full-vocab log-prob tensor like log_softmax would
+    loss = F.cross_entropy(
+        shift_logits.flatten(0, 1).float(),
+        shift_labels.flatten(),
+        reduction="none",
+        ignore_index=-100,
+    ).view(shift_labels.shape)
 
     # Sum log-probs over the valid (non -100) sequence positions
-    return (token_log_probs * valid_mask).sum(dim=-1)   # (batch_size,)
+    return -loss.sum(dim=-1)   # (batch_size,)
 
 
 
@@ -338,11 +352,12 @@ def run(args_list=None):
     parser.add_argument("-t", "--temperature", type=float, default=0.3)
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--top-p", type=float, default=0.9)
+    parser.add_argument("--score-batch-size", type=int, default=4, help="Micro-batch size used when scoring train instances with the LOGPROB score function")
 
     args, _ = parser.parse_known_args(args_list)
 
     # Define Global Variables
-    global DEVICE, DTYPE, SCORE_FN, SCORE_MODEL_NAME, K, TOP_P, N, TEMPERATURE, MAX_NEW_TOKENS
+    global DEVICE, DTYPE, SCORE_FN, SCORE_MODEL_NAME, K, TOP_P, N, TEMPERATURE, MAX_NEW_TOKENS, SCORE_BATCH_SIZE
 
     # Parse all the arguments into Variables
     MAPPER_DATASET_PATH = args.mapper_dataset_path
@@ -356,6 +371,7 @@ def run(args_list=None):
     TEMPERATURE = args.temperature
     MAX_NEW_TOKENS = args.max_new_tokens
     TOP_P = args.top_p
+    SCORE_BATCH_SIZE = args.score_batch_size
 
     # Determine DEVICE and DTYPE
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -406,15 +422,23 @@ def run(args_list=None):
         )
 
     elif SCORE_FN == "LOGPROB":
-        global score_model, score_tokenizer
+        global score_model, score_tokenizer, SHARED_SCORE_MODEL
         score_tokenizer = AutoTokenizer.from_pretrained(SCORE_MODEL_NAME)
 
         # Do this only if score model is from Llama family
         score_tokenizer.pad_token = score_tokenizer.eos_token
 
-        print(f"Loading score model {SCORE_MODEL_NAME}...")
-        score_model = AutoModelForCausalLM.from_pretrained(SCORE_MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
-        score_model.eval()
+        if SCORE_MODEL_NAME == LORA_MODEL_NAME:
+            # Avoid loading a second bf16 copy of the same base model — reuse the
+            # translator's underlying weights, with the LoRA adapter disabled during scoring
+            print("Score model matches translator base model — sharing weights (LoRA disabled during scoring).")
+            score_model = translator_model
+            SHARED_SCORE_MODEL = True
+        else:
+            print(f"Loading score model {SCORE_MODEL_NAME}...")
+            score_model = AutoModelForCausalLM.from_pretrained(SCORE_MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
+            score_model.eval()
+            SHARED_SCORE_MODEL = False
 
     else:
         print(f"Unsupported Score Function: {SCORE_FN}!")
