@@ -32,6 +32,7 @@ This concludes the examples, now use this to give an output to the following use
 """
 
 
+
 # -----------------------------
 # LLM call
 # -----------------------------
@@ -90,10 +91,23 @@ def run(args_list=None):
     print("=" * 100)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", type=str, default="./shared/verbalizations/master_verbalizations_v2.json")
-    parser.add_argument("--output", type=str, default="./shared/verbalizations/changed_master_verbalizations_v2.json")
+    parser.add_argument("--input", type=str, default="./shared/verbalizations/changed_master_verbalizations_v2.json")
+    parser.add_argument("--output", type=str, default="./shared/verbalizations/updated_master_verbalizations_v2.json")
     parser.add_argument("--model", type=str, default="gpt-4o-mini")
+
+    parser.add_argument("--do_all", action="store_true")
+    parser.add_argument("--do_fs", action="store_true")
+    parser.add_argument("--do_mapper", action="store_true")
+    parser.add_argument("--do_gt", action="store_true")
+    parser.add_argument("--do_inspect", action="store_true")
+
     args, _ = parser.parse_known_args(args_list)
+
+    do_all = args.do_all
+    do_fs = args.do_fs
+    do_mapper = args.do_mapper
+    do_gt = args.do_gt
+    do_inspect = args.do_inspect
 
     MODEL = args.model
 
@@ -116,7 +130,7 @@ def run(args_list=None):
         mapper_prompt = str(dataset["mapper_hard_prompt"])
         inspect_prompt = str(dataset["inspect_hard_prompt"])
 
-        fs_examples = "\n".join([f"Example Input: {t['input']}\nExample Output: {t['output']}" for t in train_instances])
+        fs_examples = "\n".join([f"Input: {t['input']}\nOutput: {t['output']}\n" for t in train_instances])
         fs_prompt = FS_PROMPT_TEMPLATE.format(examples=fs_examples)
 
         gt_prompt = str(dataset["hard_prompt"])
@@ -140,44 +154,58 @@ def run(args_list=None):
             fs_sys_prompt = SYS_PROMPT_TEMPLATE.format(task_prompt = fs_prompt)
             gt_sys_prompt = SYS_PROMPT_TEMPLATE.format(task_prompt = gt_prompt)
 
-            mapper_pred = get_llm_prediction(mapper_sys_prompt, user_prompt, model=MODEL)
-            inspect_pred = get_llm_prediction(inspect_sys_prompt, user_prompt, model=MODEL)
-            fs_pred = get_llm_prediction(fs_sys_prompt, user_prompt, model=MODEL)
-            gt_pred = get_llm_prediction(gt_sys_prompt, user_prompt, model=MODEL)
+            # ipdb.set_trace()
 
-            instance["mapper_output"] = mapper_pred
-            instance["inspect_output"] = inspect_pred
-            instance["fs_output"] = fs_pred
-            instance["gt_output"] = gt_pred
+            if do_mapper or do_all:
+                mapper_pred = get_llm_prediction(mapper_sys_prompt, user_prompt, model=MODEL)
+                instance["mapper_output"] = mapper_pred
+                mapper_preds.append(mapper_pred)
 
-            mapper_preds.append(mapper_pred)
-            inspect_preds.append(inspect_pred)
-            fs_preds.append(fs_pred)
-            gt_preds.append(gt_pred)
+            if do_inspect or do_all:
+                inspect_pred = get_llm_prediction(inspect_sys_prompt, user_prompt, model=MODEL)
+                instance["inspect_output"] = inspect_pred
+                inspect_preds.append(inspect_pred)
+
+            if do_fs or do_all:
+                fs_pred = get_llm_prediction(fs_sys_prompt, user_prompt, model=MODEL)
+                instance["fs_output"] = fs_pred
+                fs_preds.append(fs_pred)
+
+            if do_gt or do_all:
+                gt_pred = get_llm_prediction(gt_sys_prompt, user_prompt, model=MODEL)
+                instance["gt_output"] = gt_pred
+                gt_preds.append(gt_pred)
 
             refs.append(gt_output)
 
         # compute ROUGE-L over dataset
-        dataset["mapper_task_rougeL"] = ROUGE_METRIC.compute(
-            predictions=mapper_preds,
-            references=refs,
-            use_stemmer=True
-        )["rougeL"]
-        dataset["inspect_task_rougeL"] = ROUGE_METRIC.compute(
-            predictions=inspect_preds,
-            references=refs,
-            use_stemmer=True
-        )["rougeL"]
-        dataset["fs_task_rougeL"] = ROUGE_METRIC.compute(
-            predictions=fs_preds,
-            references=refs,
-            use_stemmer=True
-        )["rougeL"]
-        dataset["gt_task_rougeL"] = ROUGE_METRIC.compute(
-            predictions=gt_preds,
-            references=refs,
-            use_stemmer=True
-        )["rougeL"]
+        if do_mapper or do_all:
+            dataset["mapper_task_rougeL"] = ROUGE_METRIC.compute(
+                predictions=mapper_preds,
+                references=refs,
+                use_stemmer=True
+            )["rougeL"]
+
+        if do_inspect or do_all:
+            dataset["inspect_task_rougeL"] = ROUGE_METRIC.compute(
+                predictions=inspect_preds,
+                references=refs,
+                use_stemmer=True
+            )["rougeL"]
+
+        if do_fs or do_all:
+            dataset["fs_task_rougeL"] = ROUGE_METRIC.compute(
+                predictions=fs_preds,
+                references=refs,
+                use_stemmer=True
+            )["rougeL"]
+
+        if do_gt or do_all:
+            dataset["gt_task_rougeL"] = ROUGE_METRIC.compute(
+                predictions=gt_preds,
+                references=refs,
+                use_stemmer=True
+            )["rougeL"]
 
         # ipdb.set_trace()
     

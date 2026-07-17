@@ -24,7 +24,7 @@ def run(args_list=None):
     print("=" * 100)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", type=str, default="./master_verbalizations")
+    parser.add_argument("--output", type=str, default="./shared/verbalizations/master_verbalizations_v2")
     args, _ = parser.parse_known_args(args_list)
 
     out_df = pd.read_json(args.output+".json")
@@ -34,17 +34,23 @@ def run(args_list=None):
     #     json.dump(data, f, indent=2)
 
     # col_name0 = 'fs_task_rougeL'
-    col_name1 = 'mapper_task_rougeL'
-    col_name2 = 'control_task_rougeL'
-    col_name3 = 'soft_task_rougeL'
-    col_name4 = 'inspect_task_rougeL'
+    col_names = [
+        'fs_task_rougeL',
+        'soft_task_rougeL',
+        'gt_task_rougeL',
+        'mapper_task_rougeL',
+        'inspect_task_rougeL'
+    ]
+    label_names = [
+        'FSL (LLM)',
+        'Softprompt (SLM)',
+        'Groundtruth (LLM)',
+        'Translator (LLM)',
+        'InSPEcT (LLM)'
+    ]
 
-    # fs_scores = out_df[col_name0]
-    llm_scores = out_df[col_name1]
-    control_scores = out_df[col_name2]
-    soft_scores = out_df[col_name3]
-    inspect_scores = out_df[col_name4]
 
+    scores = [out_df[col_name] for col_name in col_names]
 
     # -----------------------------
     # Paired t-test (recommended)
@@ -62,29 +68,17 @@ def run(args_list=None):
     # -----------------------------
     # Box plot
     # -----------------------------
-    plt.figure(figsize=(6, 4))
+    plt.figure(figsize=(8, 4))
     plt.boxplot(
-        [
-            # fs_scores, 
-            llm_scores, 
-            control_scores, 
-            inspect_scores, 
-            soft_scores
-        ],
-        tick_labels=[
-            # "FSL (LLM)", 
-            "Translator (LLM)", 
-            "Baseline (LLM)", 
-            "InSPEcT (LLM)", 
-            "Softprompt (SLM)"
-        ]
+        scores,
+        tick_labels=label_names
     )
 
     plt.title("Comparison of average task performance (ROUGE-L)", fontsize=11)
-    plt.ylabel("ROUGE-L Score")
+    plt.ylabel("Average Task ROUGE-L Score")
     plt.grid(axis='y', linestyle='--', alpha=0.5)
 
-    plot_path = args.output + "all_rouge_l_boxplot.png"
+    plot_path = args.output + "_boxplot.png"
     plt.tight_layout()
     plt.savefig(plot_path, dpi=300)
     plt.close()
