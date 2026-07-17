@@ -132,9 +132,6 @@ def get_logprob_scores(
     return torch.tensor(logprob_scores)
 
 
-
-
-
 def get_logprob_of_translation_given_soft_prompt(
         model: torch.nn.Module,
         tokenizer,
@@ -201,6 +198,7 @@ def get_logprob_of_output_given_prompt(
     # Per-row prompt token counts tell us where the (masked) prompt span ends
     prompt_lengths = tokenizer(prompts, padding=True, return_tensors="pt", add_special_tokens=True)["attention_mask"].sum(dim=1).to(DEVICE)  # (batch_size,)
 
+    # TODO: Verify this parts
     # Build labels: score only the true output tokens
     labels = input_ids.clone()
     positions = torch.arange(input_ids.shape[1], device=DEVICE).unsqueeze(0)     # (1, seq_len)
@@ -212,28 +210,86 @@ def get_logprob_of_output_given_prompt(
         outputs_hf = model(input_ids=input_ids, attention_mask=attention_mask)
         logits = outputs_hf.logits                           # (batch_size, seq_len, vocab_size)
 
-    # Per-instance summed log-prob, then normalise by each row's scored-token count
-    summed_log_probs = _sum_sequence_logprob(logits, labels)             # (batch_size,)
-    token_counts = (labels[:, 1:] != -100).sum(dim=-1)                   # (batch_size,)
+    # Per batch: sum of log P(token | preceding tokens) over the scored (non -100) positions                                                                                                         
+    summed_log_probs = _sum_sequence_logprob(logits, labels)                # (batch_size,)                                                                                                        
+                                                                                                                                                                                                
+    # Count scored tokens per row; [:, 1:] mirrors the shift inside _sum_sequence_logprob                                                                                                          
+    # (position 0 is never scored — nothing precedes it)                                                                                                                                           
+    token_counts = (labels[:, 1:] != -100).sum(dim=-1)                      # (batch_size,)                                                                                                        
+                                                                                                                                                                                                
+    # Average per token, so instances with longer outputs aren't systematically more negative                                                                                                      
     return summed_log_probs / token_counts
 
 
 def _sum_sequence_logprob(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
     # Shift so that logits at position i predict the token at position i+1
-    shift_logits = logits[:, :-1, :]
-    shift_labels = labels[:, 1:]
+    shift_logits = logits[:, :-1, :]            # (batch_size, seq_len, vocab_size)
+    shift_labels = labels[:, 1:]                # (batch_size, seq_len)
 
     valid_mask = shift_labels != -100
 
     # Convert logits to log-probabilities over the vocab at every position
-    log_probs = F.log_softmax(shift_logits, dim=-1)
+    log_probs = F.log_softmax(shift_logits, dim=-1)     # (batch_size, seq_len, vocab_size)
 
     # Pick out the log-prob assigned to each true next token (clamp -100 to 0 first,
     # since gather can't index with -100; those positions get zeroed out by valid_mask next)
-    token_log_probs = torch.gather(log_probs, 2, shift_labels.clamp(min=0).unsqueeze(-1)).squeeze(-1)
+    token_log_probs = torch.gather(log_probs, 2, shift_labels.clamp(min=0).unsqueeze(-1)).squeeze(-1)   # (batch_size, seq_len)
 
     # Sum log-probs over the valid (non -100) sequence positions
-    return (token_log_probs * valid_mask).sum(dim=-1)
+    return (token_log_probs * valid_mask).sum(dim=-1)   # (batch_size,)
+
+
+
+def generate_preference_dataset(dataset: List[Dict], translator_model, translator_tokenizer) -> List[Dict]:
+    preference_dataset = []
+    for _ in range(K):
+        for task in dataset:
+            # Extract soft prompt
+            soft_prompt = task["soft_prompt"].to(DEVICE, dtype=DTYPE)
+
+            # Duplicate it N times
+            soft_prompt_embeds = soft_prompt.unsqueeze(0).expand(N, -1, -1)     # (N, soft_tokens, embed_dim)
+            attention_mask = torch.ones(soft_prompt_embeds.shape[:2], dtype=torch.long, device=DEVICE)
+
+            # Produce N translations
+            with torch.no_grad():
+                gen_ids = translator_model.generate(
+                    input_embeds = soft_prompt_embeds,
+                    attention_mask = attention_mask,
+                    max_new_tokens = MAX_NEW_TOKENS,
+                    do_sample = True,
+                    temperature = TEMPERATURE,
+                    top_p = TOP_P,
+                    pad_token_id = translator_tokenizer.eos_token_id
+                )
+
+            # Decode the N gen_ids into N translations
+            translations = translator_tokenizer.batch_decode(gen_ids, skip_special_tokens = True)
+            translations = [txt.strip() for txt in translations]
+
+            # Get Avg Score for each translation
+            scores = get_scores(translations, task["train_instances"])
+
+            # Find z_W and z_L
+            w_idx, l_idx = torch.argmax(scores).item(), torch.argmin(scores).item()
+            z_W, z_L = translations[w_idx], translations[l_idx]
+
+
+            # Calculate log prob of producing z_W and z_L using the translator, conditioned on the soft prompt
+            logp_ref_z_W = get_logprob_of_translation_given_soft_prompt(translator_model, translator_tokenizer, z_W, soft_prompt)
+            logp_ref_z_L = get_logprob_of_translation_given_soft_prompt(translator_model, translator_tokenizer, z_L, soft_prompt)
+
+            # Add to dataset
+            preference_dataset.append({
+                "z_prime": task["soft_prompt"],
+                "z_W": z_W,
+                "z_L": z_L,
+                "logp_ref_z_W": logp_ref_z_W,
+                "logp_ref_z_L": logp_ref_z_L,
+            })
+
+    return preference_dataset
+
 
 
 # Driver Code
@@ -248,11 +304,12 @@ def run(args_list=None):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
 
-    # Dataset Path
+    # Dataset Paths
     parser.add_argument("--mapper-dataset-path", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD-DPO")
+    parser.add_argument("--save-dataset-path", type=str, default="./shared/datasets/dpo_preference_datasets")
 
     # Score Model
-    parser.add_argument("--score-fn", type=str, default="ROUGE-L", help="Can be either: ROUGE-L | LOGPROB")
+    parser.add_argument("--score-fn", type=str, default="LOGPROB", help="Can be either: ROUGE-L | LOGPROB")
     parser.add_argument("--score-model-name", type=str, default="gpt-4o-mini", help="Can be either: Any OpenAI LLM or HF Model")
 
     # Translator Model
@@ -269,10 +326,11 @@ def run(args_list=None):
     args, _ = parser.parse_known_args(args_list)
 
     # Define Global Variables
-    global DEVICE, DTYPE, SCORE_FN, SCORE_MODEL_NAME
+    global DEVICE, DTYPE, SCORE_FN, SCORE_MODEL_NAME, K, TOP_P, N, TEMPERATURE, MAX_NEW_TOKENS
 
     # Parse all the arguments into Variables
     MAPPER_DATASET_PATH = args.mapper_dataset_path
+    SAVE_DATASET_PATH = args.save_dataset_path + f"/preference_dataset{SCORE_FN}"
     SCORE_FN = args.score_fn
     SCORE_MODEL_NAME = args.score_model_name
     LORA_MODEL_NAME = args.lora_model_name
@@ -348,60 +406,25 @@ def run(args_list=None):
 
 
     # ┌───────────────────────────────────────────────┐
-    # │      TRAIN PREFERENCE DATASET GENERATION      │
+    # │          PREFERENCE DATASET GENERATION        │
     # └───────────────────────────────────────────────┘
-    train_preference_dataset = []
-    for _ in range(K):
-        for task in train_dataset:
-            # Extract soft prompt
-            soft_prompt = task["soft_prompt"].to(DEVICE, dtype=DTYPE)
-
-            # Duplicate it N times
-            soft_prompt_embeds = soft_prompt.unsqueeze(0).expand(N, -1, -1)     # (N, soft_tokens, embed_dim)
-            attention_mask = torch.ones(soft_prompt_embeds.shape[:2], dtype=torch.long, device=DEVICE)
-
-            # Produce N translations
-            with torch.no_grad():
-                gen_ids = translator_model.generate(
-                    input_embeds = soft_prompt_embeds,
-                    attention_mask = attention_mask,
-                    max_new_tokens = MAX_NEW_TOKENS,
-                    do_sample = True,
-                    temperature = TEMPERATURE,
-                    top_p = TOP_P,
-                    pad_token_id = translator_tokenizer.eos_token_id
-                )
-
-            # Decode the N gen_ids into N translations
-            translations = translator_tokenizer.batch_decode(gen_ids, skip_special_tokens = True)
-            translations = [txt.strip() for txt in translations]
-
-            # Get Avg Score for each translation
-            scores = get_scores(translations, task["train_instances"])
-
-            # Find z_W and z_L
-            w_idx, l_idx = torch.argmax(scores).item(), torch.argmin(scores).item()
-            z_W, z_L = translations[w_idx], translations[l_idx]
+    train_preference_dataset = generate_preference_dataset(train_dataset, translator_model, translator_tokenizer)
+    val_preference_dataset = generate_preference_dataset(val_dataset, translator_model, translator_tokenizer)
 
 
-            # Calculate log prob of producing z_W and z_L using the translator, conditioned on the soft prompt
-            logp_ref_z_W = get_logprob_of_translation_given_soft_prompt(translator_model, translator_tokenizer, z_W, soft_prompt)
-            logp_ref_z_L = get_logprob_of_translation_given_soft_prompt(translator_model, translator_tokenizer, z_L, soft_prompt)
-
-            # Add to dataset
-            train_preference_dataset.append({
-                "z_prime": task["soft_prompt"],
-                "z_W": z_W,
-                "z_L": z_L,
-                "logp_ref_z_W": logp_ref_z_W,
-                "logp_ref_z_L": logp_ref_z_L,
-            })
-
-
-
-        
-
-
-
+    # ┌───────────────────────────────────────────────┐
+    # │            SAVE PREFERENCE DATASETS           │
+    # └───────────────────────────────────────────────┘
+    # Create the Directory for saving the datasets
+    os.makedirs(SAVE_DATASET_PATH, exist_ok=True)
     
-
+    # Save the Training and Validation Datasets
+    train_dataset_path = os.path.join(SAVE_DATASET_PATH, 'train_dataset.pt')
+    val_dataset_path = os.path.join(SAVE_DATASET_PATH, 'val_dataset.pt')
+    
+    torch.save(train_preference_dataset, train_dataset_path)
+    torch.save(val_preference_dataset, val_dataset_path)
+    
+    print(f"Saved Train Split ({len(train_preference_dataset)} samples) to: {train_dataset_path}")
+    print(f"Saved Val Split ({len(val_preference_dataset)} samples) to: {val_dataset_path}")
+    

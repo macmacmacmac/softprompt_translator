@@ -19,12 +19,15 @@ def run(args_list=None):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--mapper-dataset-path", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD")
-    parser.add_argument("--master-verbalizations-path", type=str, default="./verbalizations/master_verbalizations_v2.json")
+    parser.add_argument("--master-verbalizations-path", type=str, default="./shared/verbalizations/master_verbalizations_v2.json")
+    parser.add_argument("--new-verbalizations-path", type=str, default="./shared/verbalizations/master_verbalizations_v2_new.json")
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables
     MAPPER_DATASET_PATH = args.mapper_dataset_path
     MASTER_VERBALIZATIONS_PATH = args.master_verbalizations_path
+    NEW_VERBALIZATIONS_PATH = args.new_verbalizations_path
+
 
     # Global Variables
     MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
@@ -146,16 +149,16 @@ def run(args_list=None):
     # Append results
     for master_verbalization, soft_prompt_result in zip(master_verbalizations, soft_prompt_results):
         assert master_verbalization["task_name"] == soft_prompt_result["task_name"]
-        master_verbalization["val_instances"] = soft_prompt_result["val_instances"]
         master_verbalization["soft_task_rougeL"] = soft_prompt_result["soft_task_rougeL"]
 
-    # Save master verbalizations
-    with open("test2.json", "w") as f:
+        assert len(master_verbalization["val_instances"]) == len(soft_prompt_result["val_instances"])
+        for m, s in zip(master_verbalization["val_instances"], soft_prompt_result["val_instances"]):
+            m["soft_output"] = s["soft_output"]
+
+
+
+    with open(NEW_VERBALIZATIONS_PATH, "w") as f:
         json.dump(master_verbalizations, f, indent = 4)
-
-
-    # with open(MASTER_VERBALIZATIONS_PATH, "w") as f:
-    #     json.dump(master_verbalizations, f, indent = 4)
 
 
     
