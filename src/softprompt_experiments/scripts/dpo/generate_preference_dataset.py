@@ -16,7 +16,7 @@ import evaluate
 load_dotenv()
 
 # ROUGE-L Scorer
-ROUGE_METRIC = evaluate.load("rouge")
+ROUGE_METRIC = None
 
 # ┌───────────────────────────────────────────────┐
 # │                PROMPT TEMPLATES               │
@@ -88,13 +88,17 @@ def get_scores(
             translations,
             train_instances
         )
-    return []
+    raise ValueError(f"Unsupported score function: {SCORE_FN}")
 
 
 def get_rougeL_scores(
         translations: List[str],
         train_instances: List[Dict]
     ) -> torch.Tensor:
+    global ROUGE_METRIC
+    if ROUGE_METRIC is None:
+        ROUGE_METRIC = evaluate.load("rouge")
+
     rougeL_scores = []
     y = [t["output"] for t in train_instances]
     for translation in translations:
@@ -186,24 +190,34 @@ def get_logprob_of_output_given_prompt(
         prompts: List[str],
         outputs: List[str]
     ) -> torch.Tensor:
-    # Combine each prompt with its output (+ EOS as the final scored token)
-    full_texts = [prompt + output + tokenizer.eos_token for prompt, output in zip(prompts, outputs)]
+    # Tokenize prompt and output separately and concatenate ids -- this makes the
+    # prompt/output boundary exact by construction (no cross-junction BPE merging
+    # like we'd risk by tokenizing the concatenated string, and no second
+    # measurement pass needed to find where the prompt span ends)
+    batch_input_ids = []
+    batch_labels = []
+    for prompt, output in zip(prompts, outputs):
+        prompt_ids = tokenizer(prompt, add_special_tokens=True)["input_ids"]
+        output_ids = tokenizer(output, add_special_tokens=False)["input_ids"] + [tokenizer.eos_token_id]
 
-    # Batch-tokenize the combined sequences; the tokenizer's own padding returns
-    # right-padded tensors directly, so real tokens stay contiguous from position 0
-    enc = tokenizer(full_texts, padding=True, return_tensors="pt", add_special_tokens=True)
-    input_ids = enc["input_ids"].to(DEVICE)                  # (batch_size, seq_len)
-    attention_mask = enc["attention_mask"].to(DEVICE)        # (batch_size, seq_len)
+        row_ids = prompt_ids + output_ids
+        row_labels = [-100] * len(prompt_ids) + output_ids   # mask the prompt span, score only the output (+ EOS)
 
-    # Per-row prompt token counts tell us where the (masked) prompt span ends
-    prompt_lengths = tokenizer(prompts, padding=True, return_tensors="pt", add_special_tokens=True)["attention_mask"].sum(dim=1).to(DEVICE)  # (batch_size,)
+        batch_input_ids.append(row_ids)
+        batch_labels.append(row_labels)
 
-    # TODO: Verify this parts
-    # Build labels: score only the true output tokens
-    labels = input_ids.clone()
-    positions = torch.arange(input_ids.shape[1], device=DEVICE).unsqueeze(0)     # (1, seq_len)
-    labels[positions < prompt_lengths.unsqueeze(1)] = -100   # mask the prompt span
-    labels[attention_mask == 0] = -100                       # mask the padding span
+    # Manually right-pad the batch to the max sequence length
+    max_len = max(len(ids) for ids in batch_input_ids)
+    input_ids, attention_mask, labels = [], [], []
+    for ids, lbls in zip(batch_input_ids, batch_labels):
+        pad_len = max_len - len(ids)
+        input_ids.append(ids + [tokenizer.pad_token_id] * pad_len)
+        attention_mask.append([1] * len(ids) + [0] * pad_len)
+        labels.append(lbls + [-100] * pad_len)
+
+    input_ids = torch.tensor(input_ids, device=DEVICE)              # (batch_size, seq_len)
+    attention_mask = torch.tensor(attention_mask, device=DEVICE)    # (batch_size, seq_len)
+    labels = torch.tensor(labels, device=DEVICE)                    # (batch_size, seq_len)
 
     # Single forward pass over the whole batch (no `labels=` kwarg — we hand-compute log-probs)
     with torch.no_grad():
@@ -242,8 +256,8 @@ def _sum_sequence_logprob(logits: torch.Tensor, labels: torch.Tensor) -> torch.T
 
 def generate_preference_dataset(dataset: List[Dict], translator_model, translator_tokenizer) -> List[Dict]:
     preference_dataset = []
-    for _ in range(K):
-        for task in dataset:
+    for k in range(K):
+        for task in tqdm(dataset, desc=f"Round {k + 1}/{K}"):
             # Extract soft prompt
             soft_prompt = task["soft_prompt"].to(DEVICE, dtype=DTYPE)
 
@@ -254,7 +268,7 @@ def generate_preference_dataset(dataset: List[Dict], translator_model, translato
             # Produce N translations
             with torch.no_grad():
                 gen_ids = translator_model.generate(
-                    input_embeds = soft_prompt_embeds,
+                    inputs_embeds = soft_prompt_embeds,
                     attention_mask = attention_mask,
                     max_new_tokens = MAX_NEW_TOKENS,
                     do_sample = True,
@@ -272,6 +286,8 @@ def generate_preference_dataset(dataset: List[Dict], translator_model, translato
 
             # Find z_W and z_L
             w_idx, l_idx = torch.argmax(scores).item(), torch.argmin(scores).item()
+            if w_idx == l_idx:
+                print(f"Degenerate preference pairs generated for task {task['task_name']}")
             z_W, z_L = translations[w_idx], translations[l_idx]
 
 
@@ -310,7 +326,7 @@ def run(args_list=None):
 
     # Score Model
     parser.add_argument("--score-fn", type=str, default="LOGPROB", help="Can be either: ROUGE-L | LOGPROB")
-    parser.add_argument("--score-model-name", type=str, default="gpt-4o-mini", help="Can be either: Any OpenAI LLM or HF Model")
+    parser.add_argument("--score-model-name", type=str, default="meta-llama/Llama-3.1-8B-Instruct", help="Can be either: Any OpenAI LLM or HF Model")
 
     # Translator Model
     parser.add_argument("--lora-model-name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
@@ -330,8 +346,8 @@ def run(args_list=None):
 
     # Parse all the arguments into Variables
     MAPPER_DATASET_PATH = args.mapper_dataset_path
-    SAVE_DATASET_PATH = args.save_dataset_path + f"/preference_dataset{SCORE_FN}"
     SCORE_FN = args.score_fn
+    SAVE_DATASET_PATH = args.save_dataset_path + f"/preference_dataset{SCORE_FN}"
     SCORE_MODEL_NAME = args.score_model_name
     LORA_MODEL_NAME = args.lora_model_name
     LORA_WEIGHTS_PATH = args.lora_weights_path
