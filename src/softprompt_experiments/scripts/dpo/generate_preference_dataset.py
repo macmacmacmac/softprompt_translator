@@ -330,7 +330,7 @@ def run(args_list=None):
 
     # Translator Model
     parser.add_argument("--lora-model-name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
-    parser.add_argument("--lora-weights-path", type=str, default="./shared/mapper_lora_weights/General-DoD")
+    parser.add_argument("--lora-weights-path", type=str, default="./shared/mapper_lora_weights/General-DoD/meta-llama/Llama-3.1-8B-Instruct")
 
     # HyperParams
     parser.add_argument("-n", "--num-samples-to-generate", type=int, default=10)
