@@ -138,8 +138,8 @@ def get_logprob_scores(
 
 
 def get_logprob_of_translation_given_soft_prompt(
-        model: torch.nn.Module,
-        tokenizer,
+        model: PeftModel,
+        tokenizer: AutoTokenizer,
         translation: str,
         soft_prompt_embeds: torch.Tensor
     ) -> float:
@@ -186,7 +186,7 @@ def get_logprob_of_translation_given_soft_prompt(
 
 
 def get_logprob_of_output_given_prompt(
-        model: torch.nn.Module,
+        model: AutoModelForCausalLM | PeftModel,
         tokenizer,
         prompts: List[str],
         outputs: List[str]
@@ -268,7 +268,7 @@ def _sum_sequence_logprob(logits: torch.Tensor, labels: torch.Tensor) -> torch.T
 
 
 
-def generate_preference_dataset(dataset: List[Dict], translator_model, translator_tokenizer) -> List[Dict]:
+def generate_preference_dataset(dataset: List[Dict], translator_model: PeftModel, translator_tokenizer: AutoTokenizer) -> List[Dict]:
     preference_dataset = []
     for k in range(K):
         for task in tqdm(dataset, desc=f"Round {k + 1}/{K}"):
@@ -348,11 +348,11 @@ def run(args_list=None):
 
     # HyperParams
     parser.add_argument("-n", "--num-samples-to-generate", type=int, default=10)
-    parser.add_argument("-k", "--scaling-factor", type=int, default=10)
-    parser.add_argument("-t", "--temperature", type=float, default=0.3)
+    parser.add_argument("-k", "--scaling-factor", type=int, default=1)
+    parser.add_argument("-t", "--temperature", type=float, default=0.5)
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--top-p", type=float, default=0.9)
-    parser.add_argument("--score-batch-size", type=int, default=4, help="Micro-batch size used when scoring train instances with the LOGPROB score function")
+    parser.add_argument("--score-batch-size", type=int, default=16, help="Micro-batch size used when scoring train instances with the LOGPROB score function")
 
     args, _ = parser.parse_known_args(args_list)
 
@@ -362,7 +362,6 @@ def run(args_list=None):
     # Parse all the arguments into Variables
     MAPPER_DATASET_PATH = args.mapper_dataset_path
     SCORE_FN = args.score_fn
-    SAVE_DATASET_PATH = args.save_dataset_path + f"/preference_dataset{SCORE_FN}"
     SCORE_MODEL_NAME = args.score_model_name
     LORA_MODEL_NAME = args.lora_model_name
     LORA_WEIGHTS_PATH = args.lora_weights_path
@@ -372,6 +371,7 @@ def run(args_list=None):
     MAX_NEW_TOKENS = args.max_new_tokens
     TOP_P = args.top_p
     SCORE_BATCH_SIZE = args.score_batch_size
+    SAVE_DATASET_PATH = args.save_dataset_path + f"/{SCORE_FN}score_{N}n_{K}k_{TEMPERATURE}temp_{TOP_P}top_p"
 
     # Determine DEVICE and DTYPE
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"

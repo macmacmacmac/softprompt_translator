@@ -6,7 +6,7 @@
 #SBATCH -p short
 #SBATCH -t 1-00:00:00
 #SBATCH --gres=gpu:1
-#SBATCH -C A100-80G
+#SBATCH -C A100
 #SBATCH -o pref_data_logprob.out
 #SBATCH -e pref_data_logprob.out
 
