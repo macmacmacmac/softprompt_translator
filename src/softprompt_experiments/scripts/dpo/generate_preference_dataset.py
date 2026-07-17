@@ -1,6 +1,7 @@
 import os
 import argparse
 import torch
+import torch.nn.functional as F
 import ipdb
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
@@ -29,6 +30,8 @@ USR_PROMPT_TEMPLATE = """# Input
 
 # Output
 """
+
+FULL_PROMPT_TEMPLATE = SYS_PROMPT_TEMPLATE + USR_PROMPT_TEMPLATE
 
 
 # ┌───────────────────────────────────────────────┐
@@ -95,6 +98,7 @@ def get_rougeL_scores(
     rougeL_scores = []
     y = [t["output"] for t in train_instances]
     for translation in translations:
+        # Prep system prompt based on hard prompt (translation)
         system_prompt = SYS_PROMPT_TEMPLATE.format(task_prompt = translation)
 
         # Generate outputs (y_hat) using translated soft prompt
@@ -111,23 +115,125 @@ def get_rougeL_scores(
 def get_logprob_scores(
         translations: List[str],
         train_instances: List[Dict]
-    ):
-    pass
+    ) -> torch.Tensor:
+    logprob_scores = []
+    y = [t["output"] for t in train_instances]
+    for translation in translations:
+        # Create Prompts for all instances within a task
+        prompts = [FULL_PROMPT_TEMPLATE.format(task_prompt = translation, input = t["input"]) for t in train_instances]
+
+        # Log prob of each true output given its (translation + input) prompt, using the score model
+        # (batched into a single forward pass across all instances in the task)
+        instance_logprobs = get_logprob_of_output_given_prompt(score_model, score_tokenizer, prompts, y)
+
+        # Average over instances so translations are compared on the same per-instance scale
+        logprob_scores.append(instance_logprobs.mean().item())
+
+    return torch.tensor(logprob_scores)
 
 
-def get_logprob_for_sequence(
+
+
+
+def get_logprob_of_translation_given_soft_prompt(
         model: torch.nn.Module,
         tokenizer,
-        sequence: str
-    ):
-    # Tokenize the sequence
-    inputs = tokenizer(sequence, return_tensors="pt")
-    
-    # Perform forward pass
+        translation: str,
+        soft_prompt_embeds: torch.Tensor
+    ) -> float:
+    # Tokenize the translation (append EOS so the model learns/expects an explicit stop token)
+    inputs = tokenizer(translation + tokenizer.eos_token, return_tensors="pt", add_special_tokens=True)
+    inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
+
+    input_ids = inputs["input_ids"]
+    attention_mask = inputs["attention_mask"]
+
+    # Embed token ids via the model's word embedding layer (works through PeftModel too)
+    translation_embeds = model.get_input_embeddings()(input_ids).to(DTYPE)
+
+    # Prepare labels
+    labels = input_ids.clone()
+
+    # Move soft prompt embeds to DEVICE and DTYPE and add batch_dim if necessary
+    soft_prompt_embeds = soft_prompt_embeds.to(device=DEVICE, dtype=DTYPE)
+    if soft_prompt_embeds.dim() == 2:
+        soft_prompt_embeds = soft_prompt_embeds.unsqueeze(0)
+
+    # Get num of soft tokens
+    soft_prompt_len = soft_prompt_embeds.shape[1]
+
+    # Prepend the soft prompt embeddings to the sequence embeddings
+    inputs_embeds = torch.cat([soft_prompt_embeds, translation_embeds], dim=1)
+
+    # Pad attention mask with 1s for the soft prompt span
+    soft_prompt_mask = torch.ones((1, soft_prompt_len), dtype=attention_mask.dtype, device=DEVICE)
+    full_attention_mask = torch.cat([soft_prompt_mask, attention_mask], dim=1)
+
+    # Pad labels with -100 for the soft prompt span so no loss/log-prob is attributed to it
+    soft_prompt_labels = torch.full((1, soft_prompt_len), -100, dtype=labels.dtype, device=DEVICE)
+    full_labels = torch.cat([soft_prompt_labels, labels], dim=1)
+
+    # Perform forward pass (no `labels=` kwarg — we need raw logits to hand-compute per-token log-probs)
     with torch.no_grad():
-        outputs = model(**inputs)
+        outputs = model(inputs_embeds=inputs_embeds, attention_mask=full_attention_mask)
         logits = outputs.logits                                 # (batch_size, seq_len, vocab_size)
 
+    # Sum log-probs over the valid (non -100) sequence positions -> log P(translation | soft_prompt)
+    total_log_prob = _sum_sequence_logprob(logits, full_labels)
+    return total_log_prob.item()
+
+
+def get_logprob_of_output_given_prompt(
+        model: torch.nn.Module,
+        tokenizer,
+        prompts: List[str],
+        outputs: List[str]
+    ) -> torch.Tensor:
+    # Combine each prompt with its output (+ EOS as the final scored token)
+    full_texts = [prompt + output + tokenizer.eos_token for prompt, output in zip(prompts, outputs)]
+
+    # Batch-tokenize the combined sequences; the tokenizer's own padding returns
+    # right-padded tensors directly, so real tokens stay contiguous from position 0
+    enc = tokenizer(full_texts, padding=True, return_tensors="pt", add_special_tokens=True)
+    input_ids = enc["input_ids"].to(DEVICE)                  # (batch_size, seq_len)
+    attention_mask = enc["attention_mask"].to(DEVICE)        # (batch_size, seq_len)
+
+    # Per-row prompt token counts tell us where the (masked) prompt span ends
+    prompt_lengths = tokenizer(prompts, padding=True, return_tensors="pt", add_special_tokens=True)["attention_mask"].sum(dim=1).to(DEVICE)  # (batch_size,)
+
+    # Build labels: score only the true output tokens
+    labels = input_ids.clone()
+    positions = torch.arange(input_ids.shape[1], device=DEVICE).unsqueeze(0)     # (1, seq_len)
+    labels[positions < prompt_lengths.unsqueeze(1)] = -100   # mask the prompt span
+    labels[attention_mask == 0] = -100                       # mask the padding span
+
+    # Single forward pass over the whole batch (no `labels=` kwarg — we hand-compute log-probs)
+    with torch.no_grad():
+        outputs_hf = model(input_ids=input_ids, attention_mask=attention_mask)
+        logits = outputs_hf.logits                           # (batch_size, seq_len, vocab_size)
+
+    # Per-instance summed log-prob, then normalise by each row's scored-token count
+    summed_log_probs = _sum_sequence_logprob(logits, labels)             # (batch_size,)
+    token_counts = (labels[:, 1:] != -100).sum(dim=-1)                   # (batch_size,)
+    return summed_log_probs / token_counts
+
+
+def _sum_sequence_logprob(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+    # Shift so that logits at position i predict the token at position i+1
+    shift_logits = logits[:, :-1, :]
+    shift_labels = labels[:, 1:]
+
+    valid_mask = shift_labels != -100
+
+    # Convert logits to log-probabilities over the vocab at every position
+    log_probs = F.log_softmax(shift_logits, dim=-1)
+
+    # Pick out the log-prob assigned to each true next token (clamp -100 to 0 first,
+    # since gather can't index with -100; those positions get zeroed out by valid_mask next)
+    token_log_probs = torch.gather(log_probs, 2, shift_labels.clamp(min=0).unsqueeze(-1)).squeeze(-1)
+
+    # Sum log-probs over the valid (non -100) sequence positions
+    return (token_log_probs * valid_mask).sum(dim=-1)
 
 
 # Driver Code
@@ -162,15 +268,13 @@ def run(args_list=None):
 
     args, _ = parser.parse_known_args(args_list)
 
+    # Define Global Variables
+    global DEVICE, DTYPE, SCORE_FN, SCORE_MODEL_NAME
+
     # Parse all the arguments into Variables
     MAPPER_DATASET_PATH = args.mapper_dataset_path
-
-    global SCORE_FN
     SCORE_FN = args.score_fn
-
-    global SCORE_MODEL_NAME
     SCORE_MODEL_NAME = args.score_model_name
-
     LORA_MODEL_NAME = args.lora_model_name
     LORA_WEIGHTS_PATH = args.lora_weights_path
     N = args.num_samples_to_generate
@@ -228,6 +332,7 @@ def run(args_list=None):
         )
 
     elif SCORE_FN == "LOGPROB":
+        global score_model, score_tokenizer
         score_tokenizer = AutoTokenizer.from_pretrained(SCORE_MODEL_NAME)
 
         # Do this only if score model is from Llama family
@@ -245,53 +350,52 @@ def run(args_list=None):
     # ┌───────────────────────────────────────────────┐
     # │      TRAIN PREFERENCE DATASET GENERATION      │
     # └───────────────────────────────────────────────┘
-    preference_dataset = []
-    # TODO: Add a loop for K
-    for task in train_dataset:
-        # Extract soft prompt
-        soft_prompt = task["soft_prompt"].to(DEVICE, dtype=DTYPE)
+    train_preference_dataset = []
+    for _ in range(K):
+        for task in train_dataset:
+            # Extract soft prompt
+            soft_prompt = task["soft_prompt"].to(DEVICE, dtype=DTYPE)
 
-        # Duplicate it N times
-        soft_prompt_embeds = soft_prompt.unsqueeze(0).expand(N, -1, -1)     # (N, soft_tokens, embed_dim)
-        attention_mask = torch.ones(soft_prompt_embeds.shape[:2], dtype=torch.long, device=DEVICE)
+            # Duplicate it N times
+            soft_prompt_embeds = soft_prompt.unsqueeze(0).expand(N, -1, -1)     # (N, soft_tokens, embed_dim)
+            attention_mask = torch.ones(soft_prompt_embeds.shape[:2], dtype=torch.long, device=DEVICE)
 
-        # Produce N translations
-        with torch.no_grad():
-            gen_ids = translator_model.generate(
-                input_embeds = soft_prompt_embeds,
-                attention_mask = attention_mask,
-                max_new_tokens = MAX_NEW_TOKENS,
-                do_sample = True,
-                temperature = TEMPERATURE,
-                top_p = TOP_P,
-                pad_token_id = translator_tokenizer.eos_token_id
-            )
+            # Produce N translations
+            with torch.no_grad():
+                gen_ids = translator_model.generate(
+                    input_embeds = soft_prompt_embeds,
+                    attention_mask = attention_mask,
+                    max_new_tokens = MAX_NEW_TOKENS,
+                    do_sample = True,
+                    temperature = TEMPERATURE,
+                    top_p = TOP_P,
+                    pad_token_id = translator_tokenizer.eos_token_id
+                )
 
-        # Decode the N gen_ids into N translations
-        translations = translator_tokenizer.batch_decode(gen_ids, skip_special_tokens = True)
-        translations = [txt.strip for txt in translations]
+            # Decode the N gen_ids into N translations
+            translations = translator_tokenizer.batch_decode(gen_ids, skip_special_tokens = True)
+            translations = [txt.strip() for txt in translations]
 
-        # Get Avg Score for each translation
-        scores = get_scores()
+            # Get Avg Score for each translation
+            scores = get_scores(translations, task["train_instances"])
 
-        # Find z_W and z_L
-        w_idx, l_idx = torch.argmax(scores).item(), torch.argmin(scores).item()
-        z_W, z_L = translations[w_idx], translations[l_idx]
-
-
-        # TODO: Calculate log prob of producing z_W and z_L using the translator
+            # Find z_W and z_L
+            w_idx, l_idx = torch.argmax(scores).item(), torch.argmin(scores).item()
+            z_W, z_L = translations[w_idx], translations[l_idx]
 
 
+            # Calculate log prob of producing z_W and z_L using the translator, conditioned on the soft prompt
+            logp_ref_z_W = get_logprob_of_translation_given_soft_prompt(translator_model, translator_tokenizer, z_W, soft_prompt)
+            logp_ref_z_L = get_logprob_of_translation_given_soft_prompt(translator_model, translator_tokenizer, z_L, soft_prompt)
 
-        # Add to dataset
-        preference_dataset.append({
-            "z_prime": task["soft_orompt"],
-            "z_W": z_W,
-            "z_L": z_L,
-
-            # "logp_ref_z_W": ...
-            # "logp_ref_z_L": ...
-        })
+            # Add to dataset
+            train_preference_dataset.append({
+                "z_prime": task["soft_prompt"],
+                "z_W": z_W,
+                "z_L": z_L,
+                "logp_ref_z_W": logp_ref_z_W,
+                "logp_ref_z_L": logp_ref_z_L,
+            })
 
 
 
