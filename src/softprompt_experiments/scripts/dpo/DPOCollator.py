@@ -9,16 +9,12 @@ class DPOCollator:
     4. logp_ref_z_W: log prob of preferred under ref policy [(), (), (), ...]
     5. logp_ref_z_L: log prob of dispreferred under ref policy [(), (), (), ...]
     """
-    def __init__(self, tokenizer, include_log_probs=True):
+    def __init__(self, tokenizer):
         self.tokenizer = tokenizer
-        self.include_log_probs = include_log_probs
 
     def __call__(self, batch):
         # Retrieve list of soft_prompts and hard_prompts (in that order)
-        if self.include_log_probs:
-            z_prime, z_W, z_L, logp_ref_z_W, logp_ref_z_L = zip(*batch)
-        else:
-            z_prime, z_W, z_L = zip(*batch)
+        z_prime, z_W, z_L, logp_ref_z_W, logp_ref_z_L = zip(*batch)
 
         # Stack the log probs into a batch
         logp_ref_z_W = torch.stack(logp_ref_z_W.unsqueeze(0))
@@ -74,17 +70,11 @@ class DPOCollator:
         z_L_labels[z_L_attn_mask == 0] = -100              # (batch_size, seq_len)
         z_L_tokenized['labels'] = z_L_labels
 
-        if self.include_log_probs:
-            return {
-                "z_prime": z_prime, # soft prompts tensor (batch, seq_len, emb_dim)
-                "z_W_tokenized": z_W_tokenized, # tokenized pref hardprompt {'input_ids', 'attention_mask', 'labels'}
-                "z_L_tokenized": z_L_tokenized, # tokenized dispref hardprompt {'input_ids', 'attention_mask', 'labels'}
-                "log_p_ref_z_W": logp_ref_z_W, # log prob of pref hard under ref model (batch)
-                "log_p_ref_z_L": logp_ref_z_L # log prob of dispref hard under ref model (batch)
-            }
-        else:
-            return {
-                "z_prime": z_prime, # soft prompts tensor (batch, seq_len, emb_dim)
-                "z_W_tokenized": z_W_tokenized, # tokenized pref hardprompt {'input_ids', 'attention_mask', 'labels'}
-                "z_L_tokenized": z_L_tokenized, # tokenized dispref hardprompt {'input_ids', 'attention_mask', 'labels'}
-            }
+        return {
+            "z_prime": z_prime, # soft prompts tensor (batch, seq_len, emb_dim)
+            "z_W_tokenized": z_W_tokenized, # tokenized pref hardprompt {'input_ids', 'attention_mask', 'labels'}
+            "z_L_tokenized": z_L_tokenized, # tokenized dispref hardprompt {'input_ids', 'attention_mask', 'labels'}
+            "log_p_ref_z_W": logp_ref_z_W, # log prob of pref hard under ref model (batch)
+            "log_p_ref_z_L": logp_ref_z_L # log prob of dispref hard under ref model (batch)
+
+        }
