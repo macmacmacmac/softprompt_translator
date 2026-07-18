@@ -279,29 +279,43 @@ def generate_preference_dataset(dataset: List[Dict], translator_model: PeftModel
             soft_prompt_embeds = soft_prompt.unsqueeze(0).expand(N, -1, -1)     # (N, soft_tokens, embed_dim)
             attention_mask = torch.ones(soft_prompt_embeds.shape[:2], dtype=torch.long, device=DEVICE)
 
-            # Produce N translations
-            with torch.no_grad():
-                gen_ids = translator_model.generate(
-                    inputs_embeds = soft_prompt_embeds,
-                    attention_mask = attention_mask,
-                    max_new_tokens = MAX_NEW_TOKENS,
-                    do_sample = True,
-                    temperature = TEMPERATURE,
-                    top_p = TOP_P,
-                    pad_token_id = translator_tokenizer.eos_token_id
-                )
+            # Keep sampling N translations until we get all unique ones
+            tries = 0
+            while tries < 3:
+                # Produce N translations
+                with torch.no_grad():
+                    gen_ids = translator_model.generate(
+                        inputs_embeds = soft_prompt_embeds,
+                        attention_mask = attention_mask,
+                        max_new_tokens = MAX_NEW_TOKENS,
+                        do_sample = True,
+                        temperature = TEMPERATURE,
+                        top_p = TOP_P,
+                        pad_token_id = translator_tokenizer.eos_token_id
+                    )
 
-            # Decode the N gen_ids into N translations
-            translations = translator_tokenizer.batch_decode(gen_ids, skip_special_tokens = True)
-            translations = [txt.strip() for txt in translations]
+                # Decode the N gen_ids into N translations
+                translations = translator_tokenizer.batch_decode(gen_ids, skip_special_tokens = True)
+                translations = [txt.strip() for txt in translations]
 
-            # Get Avg Score for each translation
-            scores = get_scores(translations, task["train_instances"])
+                # Convert translations to list            
+                translations = list(translations)
 
-            # Find z_W and z_L
-            w_idx, l_idx = torch.argmax(scores).item(), torch.argmin(scores).item()
-            if w_idx == l_idx:
-                print(f"Degenerate preference pairs generated for task {task['task_name']}")
+                # Get Avg Score for each translation
+                scores = get_scores(translations, task["train_instances"])
+
+                # Find z_W and z_L
+                w_idx, l_idx = torch.argmax(scores).item(), torch.argmin(scores).item()
+                if w_idx != l_idx:
+                    break
+
+                print(f"Degenerate preference pairs generated for task {task['task_name']}, Retrying...")
+                tries +=1 
+
+            if tries == 3:
+                print(f"Retries exceeded! Skipping task: {task["task_name"]}")
+                continue
+                
             z_W, z_L = translations[w_idx], translations[l_idx]
 
 
