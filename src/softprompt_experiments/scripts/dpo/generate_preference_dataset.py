@@ -1,6 +1,7 @@
 import os
 import argparse
 import contextlib
+from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 import torch
 import torch.nn.functional as F
 import ipdb
@@ -10,7 +11,7 @@ from dotenv import load_dotenv
 from openai import OpenAI, RateLimitError
 import time
 from tqdm import tqdm
-from typing import List, Dict
+from typing import List, Dict, Tuple
 import evaluate
 
 # Load all Environment Variables
@@ -100,20 +101,44 @@ def get_rougeL_scores(
     if ROUGE_METRIC is None:
         ROUGE_METRIC = evaluate.load("rouge")
 
-    rougeL_scores = []
     y = [t["output"] for t in train_instances]
-    for translation in translations:
+
+    # Build the full (translation x train_instance) job list up front so all
+    # OpenAI calls can be fired concurrently instead of one blocking call at a time.
+    # Each job carries its own fully-formatted system/user prompt plus the (i, j)
+    # coordinates needed to place its result back into y_hat in the right slot.
+    jobs = []
+    for i, translation in enumerate(translations):
         # Prep system prompt based on hard prompt (translation)
         system_prompt = SYS_PROMPT_TEMPLATE.format(task_prompt = translation)
-
-        # Generate outputs (y_hat) using translated soft prompt
-        y_hat = []
-        for instance in train_instances:
+        for j, instance in enumerate(train_instances):
             user_prompt = USR_PROMPT_TEMPLATE.format(input = instance["input"])
-            y_hat.append(prompt_openai_model(SCORE_MODEL_NAME, system_prompt, user_prompt))
-        
-        # Compute ROUGE-L between y and y_hat for current translated soft prompt
-        rougeL_scores.append(ROUGE_METRIC.compute(predictions=y_hat, references=y)["rougeL"])
+            jobs.append((i, j, system_prompt, user_prompt))
+
+    # Preallocate y_hat[i][j] so results can be written back out of order as
+    # futures complete, regardless of scheduling.
+    y_hat = [[None] * len(train_instances) for _ in translations]
+
+    # The OpenAI client is thread-safe and these calls are I/O-bound (waiting on
+    # the network), so a thread pool -- not a process pool -- is the right tool
+    # here: it parallelizes the waiting without paying for GIL-bound work.
+    with ThreadPoolExecutor(max_workers=OPENAI_CONCURRENCY) as executor:
+        future_to_coords: Dict[Future[str], Tuple[int, int]] = {
+            executor.submit(prompt_openai_model, SCORE_MODEL_NAME, system_prompt, user_prompt): (i, j)
+            for (i, j, system_prompt, user_prompt) in jobs
+        }
+
+        for future in tqdm(as_completed(future_to_coords), total=len(jobs), desc="Scoring", leave=False):
+            i, j = future_to_coords[future]
+            # .result() re-raises any exception from the worker (e.g. exhausted
+            # retries in prompt_openai_model), matching the previous fail-fast behavior
+            y_hat[i][j] = future.result()
+
+    # Compute ROUGE-L between y and y_hat per translation, in original translation order
+    rougeL_scores = [
+        ROUGE_METRIC.compute(predictions=y_hat[i], references=y)["rougeL"]
+        for i in range(len(translations))
+    ]
     return torch.tensor(rougeL_scores)
 
 
@@ -383,11 +408,12 @@ def run(args_list=None):
     parser.add_argument("--max-retries", type=int, default=5, help="Max resample attempts for a task before giving up on a non-degenerate preference pair")
     parser.add_argument("--retry-temp-increment", type=float, default=0.25, help="Amount to raise sampling temperature by on each retry")
     parser.add_argument("--max-retry-temperature", type=float, default=1.5, help="Cap on the escalated retry temperature")
+    parser.add_argument("--openai-concurrency", type=int, default=32, help="Number of worker threads for concurrent OpenAI scoring calls (ROUGE-L score function only)")
 
     args, _ = parser.parse_known_args(args_list)
 
     # Define Global Variables
-    global DEVICE, DTYPE, SCORE_FN, SCORE_MODEL_NAME, K, TOP_P, N, TEMPERATURE, MAX_NEW_TOKENS, SCORE_BATCH_SIZE, MAX_RETRIES, RETRY_TEMP_INCREMENT, MAX_RETRY_TEMPERATURE
+    global DEVICE, DTYPE, SCORE_FN, SCORE_MODEL_NAME, K, TOP_P, N, TEMPERATURE, MAX_NEW_TOKENS, SCORE_BATCH_SIZE, MAX_RETRIES, RETRY_TEMP_INCREMENT, MAX_RETRY_TEMPERATURE, OPENAI_CONCURRENCY
 
     # Parse all the arguments into Variables
     MAPPER_DATASET_PATH = args.mapper_dataset_path
@@ -404,6 +430,7 @@ def run(args_list=None):
     MAX_RETRIES = args.max_retries
     RETRY_TEMP_INCREMENT = args.retry_temp_increment
     MAX_RETRY_TEMPERATURE = args.max_retry_temperature
+    OPENAI_CONCURRENCY = args.openai_concurrency
     SAVE_DATASET_PATH = args.save_dataset_path + f"/{SCORE_FN}score_{N}n_{K}k_{TEMPERATURE}temp_{TOP_P}top_p"
 
     # Determine DEVICE and DTYPE
