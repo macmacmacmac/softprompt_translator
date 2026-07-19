@@ -24,7 +24,7 @@ def run(args_list=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
     parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD-10x")
-    parser.add_argument("--master_verbalizations_path", type=str, default="./shared/verbalizations/master_verbalizations_v2.json")
+    parser.add_argument("--master_verbalizations_path", type=str, default="./shared/verbalizations/updated_master_verbalizations_v3.json")
     parser.add_argument("--sample", action='store_true', help="Use a sample of val dataset instead of the full val dataset")
     parser.add_argument("--lora_dir", type=str, default="./shared/mapper_lora_weights/General-DoD-10x")
     parser.add_argument("--num_samples", type=int, default=5)
@@ -166,10 +166,6 @@ def run(args_list=None):
 
     for m, r in zip(master_verbalizations, results_data):
         assert m["task_name"] == r["task_name"]
-        m["train_instances"] = r["train_instances"]
-
-        del m["mapper_hard_prompt_10x"], m["mapper_hard_prompt_10x_rougeL"], m["mapper_hard_prompt_10x_cos_sim"]
-
         m["mapper10x_hard_prompt"] = r["mapper_hard_prompt"]
         m["mapper10x_hard_prompt_rougeL"] = r["mapper_hard_prompt_rougeL"]
         m["mapper10x_hard_prompt_cos_sim"] = r["mapper_hard_prompt_cos_sim"]

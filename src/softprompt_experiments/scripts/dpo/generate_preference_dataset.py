@@ -23,17 +23,18 @@ ROUGE_METRIC = None
 # ┌───────────────────────────────────────────────┐
 # │                PROMPT TEMPLATES               │
 # └───────────────────────────────────────────────┘
-SYS_PROMPT_TEMPLATE = """# Task
-{task_prompt}
-"""
+SYS_PROMPT = """You are a helpful assistant. Follow the task exactly."""
 
-USR_PROMPT_TEMPLATE = """# Input
+USR_PROMPT_TEMPLATE = """{task_prompt}
+
+Input:
 {input}
 
-# Output
+Output:
 """
 
-FULL_PROMPT_TEMPLATE = SYS_PROMPT_TEMPLATE + USR_PROMPT_TEMPLATE
+
+FULL_PROMPT_TEMPLATE = SYS_PROMPT + USR_PROMPT_TEMPLATE
 
 
 # ┌───────────────────────────────────────────────┐
@@ -110,10 +111,9 @@ def get_rougeL_scores(
     jobs = []
     for i, translation in enumerate(translations):
         # Prep system prompt based on hard prompt (translation)
-        system_prompt = SYS_PROMPT_TEMPLATE.format(task_prompt = translation)
         for j, instance in enumerate(train_instances):
-            user_prompt = USR_PROMPT_TEMPLATE.format(input = instance["input"])
-            jobs.append((i, j, system_prompt, user_prompt))
+            user_prompt = USR_PROMPT_TEMPLATE.format(task_prompt = translation, input = instance["input"])
+            jobs.append((i, j, SYS_PROMPT, user_prompt))
 
     # Preallocate y_hat[i][j] so results can be written back out of order as
     # futures complete, regardless of scheduling.
@@ -360,6 +360,7 @@ def generate_preference_dataset(dataset: List[Dict], translator_model: PeftModel
 
             # Add to dataset
             preference_dataset.append({
+                "task_name": task["task_name"],
                 "z_prime": task["soft_prompt"],
                 "z_W": z_W,
                 "z_L": z_L,
@@ -396,7 +397,7 @@ def run(args_list=None):
 
     # Translator Model
     parser.add_argument("--lora-model-name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
-    parser.add_argument("--lora-weights-path", type=str, default="./shared/mapper_lora_weights/General-DoD/meta-llama/Llama-3.1-8B-Instruct")
+    parser.add_argument("--lora-weights-path", type=str, default="./shared/mapper_lora_weights/General-DoD-10x/meta-llama/Llama-3.1-8B-Instruct")
 
     # HyperParams
     parser.add_argument("-n", "--num-samples-to-generate", type=int, default=10)
