@@ -91,7 +91,7 @@ def run(args_list=None):
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", type=str, default="./shared/verbalizations/master_verbalizations_v2.json")
-    parser.add_argument("--output", type=str, default="./shared/verbalizations/changed_master_verbalizations_v2.json")
+    parser.add_argument("--output", type=str, default="./shared/verbalizations/test.json")
     parser.add_argument("--model", type=str, default="gpt-4o-mini")
     args, _ = parser.parse_known_args(args_list)
 
@@ -110,71 +110,83 @@ def run(args_list=None):
 
     for dataset in tqdm(data):
         # ipdb.set_trace()
-        instances = dataset["val_instances"]
-        train_instances = dataset["train_instances"]
+        val_instances = dataset["val_instances"]
+        # train_instances = dataset["train_instances"]
 
-        mapper_prompt = str(dataset["mapper_hard_prompt"])
-        inspect_prompt = str(dataset["inspect_hard_prompt"])
+        # mapper_prompt = str(dataset["mapper_hard_prompt"])
+        # inspect_prompt = str(dataset["inspect_hard_prompt"])
 
-        fs_examples = "\n".join([f"Example Input: {t['input']}\nExample Output: {t['output']}" for t in train_instances])
-        fs_prompt = FS_PROMPT_TEMPLATE.format(examples=fs_examples)
+        # fs_examples = "\n".join([f"Example Input: {t['input']}\nExample Output: {t['output']}" for t in train_instances[:5]])
+        # fs_prompt = FS_PROMPT_TEMPLATE.format(examples=fs_examples)
 
-        gt_prompt = str(dataset["hard_prompt"])
+        # gt_prompt = str(dataset["hard_prompt"])
+
+        mapper10x_prompt = str(dataset["mapper10x_hard_prompt"])
 
 
-        mapper_preds = []
-        inspect_preds = []
-        fs_preds = []
-        gt_preds = []
+        # mapper_preds = []
+        # inspect_preds = []
+        # fs_preds = []
+        # gt_preds = []
+        mapper10x_preds = []
 
         refs = []
 
-        for instance in instances:
+        for instance in val_instances:
             input = instance["input"]
             gt_output = instance["output"]
 
             user_prompt = USR_PROMPT_TEMPLATE.format(input = input)
 
-            mapper_sys_prompt = SYS_PROMPT_TEMPLATE.format(task_prompt = mapper_prompt)
-            inspect_sys_prompt = SYS_PROMPT_TEMPLATE.format(task_prompt = inspect_prompt)
-            fs_sys_prompt = SYS_PROMPT_TEMPLATE.format(task_prompt = fs_prompt)
-            gt_sys_prompt = SYS_PROMPT_TEMPLATE.format(task_prompt = gt_prompt)
+            # mapper_sys_prompt = SYS_PROMPT_TEMPLATE.format(task_prompt = mapper_prompt)
+            # inspect_sys_prompt = SYS_PROMPT_TEMPLATE.format(task_prompt = inspect_prompt)
+            # fs_sys_prompt = SYS_PROMPT_TEMPLATE.format(task_prompt = fs_prompt)
+            # gt_sys_prompt = SYS_PROMPT_TEMPLATE.format(task_prompt = gt_prompt)
+            mapper10x_sys_prompt = SYS_PROMPT_TEMPLATE.format(task_prompt = mapper10x_prompt)
 
-            mapper_pred = get_llm_prediction(mapper_sys_prompt, user_prompt, model=MODEL)
-            inspect_pred = get_llm_prediction(inspect_sys_prompt, user_prompt, model=MODEL)
-            fs_pred = get_llm_prediction(fs_sys_prompt, user_prompt, model=MODEL)
-            gt_pred = get_llm_prediction(gt_sys_prompt, user_prompt, model=MODEL)
+            # mapper_pred = get_llm_prediction(mapper_sys_prompt, user_prompt, model=MODEL)
+            # inspect_pred = get_llm_prediction(inspect_sys_prompt, user_prompt, model=MODEL)
+            # fs_pred = get_llm_prediction(fs_sys_prompt, user_prompt, model=MODEL)
+            # gt_pred = get_llm_prediction(gt_sys_prompt, user_prompt, model=MODEL)
+            mapper10x_pred = get_llm_prediction(mapper10x_sys_prompt, user_prompt, model=MODEL)
 
-            instance["mapper_output"] = mapper_pred
-            instance["inspect_output"] = inspect_pred
-            instance["fs_output"] = fs_pred
-            instance["gt_output"] = gt_pred
+            # instance["mapper_output"] = mapper_pred
+            # instance["inspect_output"] = inspect_pred
+            # instance["fs_output"] = fs_pred
+            # instance["gt_output"] = gt_pred
+            instance["mapper10x_output"] = mapper10x_pred
 
-            mapper_preds.append(mapper_pred)
-            inspect_preds.append(inspect_pred)
-            fs_preds.append(fs_pred)
-            gt_preds.append(gt_pred)
+            # mapper_preds.append(mapper_pred)
+            # inspect_preds.append(inspect_pred)
+            # fs_preds.append(fs_pred)
+            # gt_preds.append(gt_pred)
+            mapper10x_preds.append(mapper10x_pred)
 
             refs.append(gt_output)
 
         # compute ROUGE-L over dataset
+        # dataset["mapper_task_rougeL"] = ROUGE_METRIC.compute(
+        #     predictions=mapper_preds,
+        #     references=refs,
+        #     use_stemmer=True
+        # )["rougeL"]
+        # dataset["inspect_task_rougeL"] = ROUGE_METRIC.compute(
+        #     predictions=inspect_preds,
+        #     references=refs,
+        #     use_stemmer=True
+        # )["rougeL"]
+        # dataset["fs_task_rougeL"] = ROUGE_METRIC.compute(
+        #     predictions=fs_preds,
+        #     references=refs,
+        #     use_stemmer=True
+        # )["rougeL"]
+        # dataset["gt_task_rougeL"] = ROUGE_METRIC.compute(
+        #     predictions=gt_preds,
+        #     references=refs,
+        #     use_stemmer=True
+        # )["rougeL"]
         dataset["mapper_task_rougeL"] = ROUGE_METRIC.compute(
-            predictions=mapper_preds,
-            references=refs,
-            use_stemmer=True
-        )["rougeL"]
-        dataset["inspect_task_rougeL"] = ROUGE_METRIC.compute(
-            predictions=inspect_preds,
-            references=refs,
-            use_stemmer=True
-        )["rougeL"]
-        dataset["fs_task_rougeL"] = ROUGE_METRIC.compute(
-            predictions=fs_preds,
-            references=refs,
-            use_stemmer=True
-        )["rougeL"]
-        dataset["gt_task_rougeL"] = ROUGE_METRIC.compute(
-            predictions=gt_preds,
+            predictions=mapper10x_preds,
             references=refs,
             use_stemmer=True
         )["rougeL"]
