@@ -7,8 +7,8 @@
 #SBATCH -t 2-00:00:00
 #SBATCH --gres=gpu:1
 #SBATCH -C A100
-#SBATCH -o rougel10x.out
-#SBATCH -e rougel10x.out
+#SBATCH -o logprob10x.out
+#SBATCH -e logprob10x.out
 
 # -----------------------------
 # Load Required Modules
@@ -37,6 +37,6 @@ export PYTORCH_ALLOC_CONF=expandable_segments:True
 # -----------------------------
 # Run the Job (Example: Python Script / Module)
 # -----------------------------
-# python -u -m run_experiment --scripts dpo.generate_preference_dataset -n 20
-python -u -m run_experiment --scripts dpo.generate_preference_dataset --score-fn ROUGE-L
+python -u -m run_experiment --scripts dpo.generate_preference_dataset -n 10
+# python -u -m run_experiment --scripts dpo.generate_preference_dataset --score-fn ROUGE-L
 
