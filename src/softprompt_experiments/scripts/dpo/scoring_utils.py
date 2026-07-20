@@ -10,6 +10,7 @@ from openai import OpenAI, RateLimitError
 from tqdm import tqdm
 from typing import List, Dict, Tuple
 import evaluate
+from vllm import LLM, SamplingParams
 
 
 # ┌───────────────────────────────────────────────┐
@@ -63,6 +64,8 @@ def init_scoring(
     dtype,
     translator_model,
     lora_model_name,
+    use_vllm,
+    vllm_gpu_memory_utilization,
 ):
     """
     Initialise every module-level global the scoring helpers depend on.
@@ -75,7 +78,14 @@ def init_scoring(
 
     SCORE_FN = score_fn
     SCORE_MODEL_NAME = score_model_name
-    SCORE_BACKEND = get_score_backend(score_model_name)
+    
+    # Route to vllm if requested, compatible, and using ROUGE-L
+    # (LOGPROB already shares weights efficiently via HF, no vllm needed)
+    if use_vllm and get_score_backend(score_model_name) == "hf" and SCORE_FN == "ROUGE-L":
+        SCORE_BACKEND = "vllm"
+    else:
+        SCORE_BACKEND = get_score_backend(score_model_name)
+        
     SCORE_BATCH_SIZE = score_batch_size
     SCORE_MAX_NEW_TOKENS = score_max_new_tokens
     OPENAI_CONCURRENCY = openai_concurrency
@@ -96,6 +106,18 @@ def init_scoring(
                 f"ROUGE-L score function, got: {SCORE_FN}"
             )
         OPENAI_CLIENT = init_openai_client()
+
+    elif SCORE_BACKEND == "vllm":
+        print(f"Loading score model {SCORE_MODEL_NAME} with vLLM (gpu_memory_utilization={vllm_gpu_memory_utilization})...")
+        # Ensure we use bfloat16 for vllm if DTYPE is bfloat16, else let it auto-detect or use float32
+        vllm_dtype = "bfloat16" if DTYPE == torch.bfloat16 else "float32"
+        score_model = LLM(
+            model=SCORE_MODEL_NAME, 
+            dtype=vllm_dtype,
+            gpu_memory_utilization=vllm_gpu_memory_utilization,
+            enforce_eager=True, # Saves CUDA graph memory
+        )
+        SHARED_SCORE_MODEL = False
 
     else:
         score_tokenizer = AutoTokenizer.from_pretrained(SCORE_MODEL_NAME)
@@ -253,9 +275,11 @@ def get_rougeL_scores(
     y = [t["output"] for t in train_instances]
 
     # Produce y_hat[i][j] = score model's output for (translation i, train instance j),
-    # either with the local HF score model or via concurrent OpenAI API calls
+    # either with the local HF score model, vLLM, or via concurrent OpenAI API calls
     if SCORE_BACKEND == "hf":
         y_hat = generate_outputs_locally(translations, train_instances)
+    elif SCORE_BACKEND == "vllm":
+        y_hat = generate_outputs_vllm(translations, train_instances)
     else:
         y_hat = generate_outputs_concurrently(
             OPENAI_CLIENT,
@@ -273,6 +297,37 @@ def get_rougeL_scores(
         for i in range(len(translations))
     ]
     return torch.tensor(rougeL_scores)
+
+
+def generate_outputs_vllm(
+        translations: List[str],
+        train_instances: List[Dict]
+    ) -> List[List[str]]:
+
+    # Build prompts and job mapping
+    jobs = []
+    prompts = []
+    for i, translation in enumerate(translations):
+        for j, instance in enumerate(train_instances):
+            prompt = FULL_PROMPT_TEMPLATE.format(task_prompt = translation, input = instance["input"])
+            jobs.append((i, j))
+            prompts.append(prompt)
+
+    y_hat = [[None] * len(train_instances) for _ in translations]
+
+    # Deterministic generation
+    sampling_params = SamplingParams(
+        temperature=0.0,
+        max_tokens=SCORE_MAX_NEW_TOKENS,
+    )
+    
+    # vLLM handles batching internally
+    outputs = score_model.generate(prompts, sampling_params, use_tqdm=True)
+
+    for (i, j), output in zip(jobs, outputs):
+        y_hat[i][j] = output.outputs[0].text.strip()
+
+    return y_hat
 
 
 def generate_outputs_locally(

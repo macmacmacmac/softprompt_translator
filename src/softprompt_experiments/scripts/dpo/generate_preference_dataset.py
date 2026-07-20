@@ -145,6 +145,10 @@ def run(args_list=None):
     parser.add_argument("--score-fn", type=str, default="LOGPROB", help="Can be either: ROUGE-L | LOGPROB")
     parser.add_argument("--score-model-name", type=str, default="meta-llama/Llama-3.1-8B-Instruct", help="HF model ids (contain `/`) run locally; bare OpenAI model names use the API (ROUGE-L only)")
 
+    # vLLM Config
+    parser.add_argument("--use-vllm", action="store_true", help="Use vLLM backend for local HF score models (speeds up ROUGE-L scoring)")
+    parser.add_argument("--vllm-gpu-memory-utilization", type=float, default=0.45, help="GPU memory fraction for vLLM (keep it <0.5 to leave room for the translator model)")
+
     # Translator Model
     parser.add_argument("--lora-model-name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
     parser.add_argument("--lora-weights-path", type=str, default="./shared/mapper_lora_weights/General-DoD-10x/meta-llama/Llama-3.1-8B-Instruct")
@@ -184,6 +188,8 @@ def run(args_list=None):
     RETRY_TEMP_INCREMENT = args.retry_temp_increment
     MAX_RETRY_TEMPERATURE = args.max_retry_temperature
     OPENAI_CONCURRENCY = args.openai_concurrency
+    USE_VLLM = args.use_vllm
+    VLLM_GPU_MEMORY_UTILIZATION = args.vllm_gpu_memory_utilization
     SAVE_DATASET_PATH = args.save_dataset_path + f"/{SCORE_FN}score_{N}n_{K}k_{TEMPERATURE}temp_{TOP_P}top_p"
 
     # Determine DEVICE and DTYPE
@@ -233,6 +239,8 @@ def run(args_list=None):
         dtype=DTYPE,
         translator_model=translator_model,
         lora_model_name=LORA_MODEL_NAME,
+        use_vllm=USE_VLLM,
+        vllm_gpu_memory_utilization=VLLM_GPU_MEMORY_UTILIZATION,
     )
 
 
