@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 from tqdm import tqdm
 import ipdb 
 
+from softprompt_experiments.scripts.comparisons import verbalizations_rougeL_visualizer
+
 load_dotenv()  
 ROUGE_METRIC = evaluate.load("rouge")
 
@@ -215,5 +217,8 @@ def run(args_list=None):
         print(f"Saving results to {args.output}...")
         with open(args.output, "w") as f:
             json.dump(data, f, indent=4)
+
+
+        verbalizations_rougeL_visualizer.run(args_list)
 
 
