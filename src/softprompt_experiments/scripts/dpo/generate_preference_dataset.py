@@ -348,13 +348,13 @@ def generate_preference_dataset(dataset: List[Dict], translator_model: PeftModel
 
                 if attempt < MAX_RETRIES:
                     temperature = min(temperature + RETRY_TEMP_INCREMENT, MAX_RETRY_TEMPERATURE)
-                    print(
+                    tqdm.write(
                         f"Degenerate preference pairs generated for task {task['task_name']} "
                         f"(attempt {attempt + 1}/{MAX_RETRIES + 1}), retrying with temperature={temperature}..."
                     )
             else:
                 skipped_tasks.append(task["task_name"])
-                print(f'Retries exceeded! Skipping task: {task["task_name"]}')
+                tqdm.write(f'Retries exceeded! Skipping task: {task["task_name"]}')
                 continue
 
             z_W = max(unique_scores, key=unique_scores.get)
@@ -411,8 +411,8 @@ def run(args_list=None):
     parser.add_argument("-t", "--temperature", type=float, default=0.5)
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--top-p", type=float, default=0.9)
-    parser.add_argument("--score-batch-size", type=int, default=16, help="Micro-batch size used when scoring train instances with a local HF score model (both score functions)")
-    parser.add_argument("--score-max-new-tokens", type=int, default=256, help="Cap on generated output length per train instance when scoring ROUGE-L with a local HF score model")
+    parser.add_argument("--score-batch-size", type=int, default=64, help="Micro-batch size used when scoring train instances with a local HF score model (both score functions)")
+    parser.add_argument("--score-max-new-tokens", type=int, default=128, help="Cap on generated output length per train instance when scoring ROUGE-L with a local HF score model")
     parser.add_argument("--max-retries", type=int, default=5, help="Max resample attempts for a task before giving up on a non-degenerate preference pair")
     parser.add_argument("--retry-temp-increment", type=float, default=0.25, help="Amount to raise sampling temperature by on each retry")
     parser.add_argument("--max-retry-temperature", type=float, default=1.5, help="Cap on the escalated retry temperature")
