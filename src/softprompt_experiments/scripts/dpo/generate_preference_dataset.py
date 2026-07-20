@@ -1,18 +1,20 @@
 import os
 import argparse
 import contextlib
-from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 import torch
 import torch.nn.functional as F
 import ipdb
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
 from dotenv import load_dotenv
-from openai import OpenAI, RateLimitError
-import time
 from tqdm import tqdm
-from typing import List, Dict, Tuple
+from typing import List, Dict
 import evaluate
+
+from softprompt_experiments.scripts.dpo.openai_scoring_utils import (
+    init_openai_client,
+    generate_outputs_concurrently,
+)
 
 # Load all Environment Variables
 load_dotenv()
@@ -40,41 +42,10 @@ FULL_PROMPT_TEMPLATE = SYS_PROMPT + USR_PROMPT_TEMPLATE
 # ┌───────────────────────────────────────────────┐
 # │                 HELPER METHODS                │
 # └───────────────────────────────────────────────┘
-def prompt_openai_model(
-    model_name: str,
-    system_prompt: str,
-    user_prompt: str, 
-    max_retries: int = 5,
-    **kwargs
-):
-    defaults = {
-        "model": model_name,
-    }
-    params = {**defaults, **kwargs}
-    for attempt in range(max_retries):
-        try:
-            response = OPENAI_CLIENT.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0,
-                **params,
-            )
-
-            return response.choices[0].message.content.strip()
-
-        except RateLimitError as e:
-            if attempt == max_retries - 1:
-                raise
-
-            wait_time = 2 ** attempt
-            print(
-                f"Rate limited. Retrying in {wait_time}s "
-                f"(attempt {attempt + 1}/{max_retries})"
-            )
-            time.sleep(wait_time)
-    return ""
+def get_score_backend(score_model_name: str) -> str:
+    # HF model ids contain a `/` (e.g. `meta-llama/Llama-3.1-8B-Instruct`) -> run locally.
+    # Otherwise (e.g. `gpt-4o-mini`) -> use the OpenAI API.
+    return "hf" if "/" in score_model_name else "openai"
 
 
 def get_scores(
@@ -104,35 +75,20 @@ def get_rougeL_scores(
 
     y = [t["output"] for t in train_instances]
 
-    # Build the full (translation x train_instance) job list up front so all
-    # OpenAI calls can be fired concurrently instead of one blocking call at a time.
-    # Each job carries its own fully-formatted system/user prompt plus the (i, j)
-    # coordinates needed to place its result back into y_hat in the right slot.
-    jobs = []
-    for i, translation in enumerate(translations):
-        # Prep system prompt based on hard prompt (translation)
-        for j, instance in enumerate(train_instances):
-            user_prompt = USR_PROMPT_TEMPLATE.format(task_prompt = translation, input = instance["input"])
-            jobs.append((i, j, SYS_PROMPT, user_prompt))
-
-    # Preallocate y_hat[i][j] so results can be written back out of order as
-    # futures complete, regardless of scheduling.
-    y_hat = [[None] * len(train_instances) for _ in translations]
-
-    # The OpenAI client is thread-safe and these calls are I/O-bound (waiting on
-    # the network), so a thread pool -- not a process pool -- is the right tool
-    # here: it parallelizes the waiting without paying for GIL-bound work.
-    with ThreadPoolExecutor(max_workers=OPENAI_CONCURRENCY) as executor:
-        future_to_coords: Dict[Future[str], Tuple[int, int]] = {
-            executor.submit(prompt_openai_model, SCORE_MODEL_NAME, system_prompt, user_prompt): (i, j)
-            for (i, j, system_prompt, user_prompt) in jobs
-        }
-
-        for future in tqdm(as_completed(future_to_coords), total=len(jobs), desc="Scoring", leave=False):
-            i, j = future_to_coords[future]
-            # .result() re-raises any exception from the worker (e.g. exhausted
-            # retries in prompt_openai_model), matching the previous fail-fast behavior
-            y_hat[i][j] = future.result()
+    # Produce y_hat[i][j] = score model's output for (translation i, train instance j),
+    # either with the local HF score model or via concurrent OpenAI API calls
+    if SCORE_BACKEND == "hf":
+        y_hat = generate_outputs_locally(translations, train_instances)
+    else:
+        y_hat = generate_outputs_concurrently(
+            OPENAI_CLIENT,
+            SCORE_MODEL_NAME,
+            translations,
+            train_instances,
+            SYS_PROMPT,
+            USR_PROMPT_TEMPLATE,
+            OPENAI_CONCURRENCY,
+        )
 
     # Compute ROUGE-L between y and y_hat per translation, in original translation order
     rougeL_scores = [
@@ -140,6 +96,56 @@ def get_rougeL_scores(
         for i in range(len(translations))
     ]
     return torch.tensor(rougeL_scores)
+
+
+def generate_outputs_locally(
+        translations: List[str],
+        train_instances: List[Dict]
+    ) -> List[List[str]]:
+    # Build the full (translation x train_instance) job list up front, mirroring the
+    # OpenAI path: each job carries its fully-formatted prompt plus the (i, j)
+    # coordinates needed to place its result back into y_hat in the right slot.
+    jobs = []
+    for i, translation in enumerate(translations):
+        for j, instance in enumerate(train_instances):
+            # Same raw prompt format the LOGPROB score path uses
+            prompt = FULL_PROMPT_TEMPLATE.format(task_prompt = translation, input = instance["input"])
+            jobs.append((i, j, prompt))
+
+    # Preallocate y_hat[i][j] so results can be written back via each job's coordinates
+    y_hat = [[None] * len(train_instances) for _ in translations]
+
+    # Generate in micro-batches of SCORE_BATCH_SIZE to bound peak memory, with the
+    # LoRA adapter disabled when the score model shares weights with the translator
+    scoring_ctx = score_model.disable_adapter() if SHARED_SCORE_MODEL else contextlib.nullcontext()
+    with scoring_ctx:
+        for start in tqdm(range(0, len(jobs), SCORE_BATCH_SIZE), desc="Scoring", leave=False):
+            chunk = jobs[start:start + SCORE_BATCH_SIZE]
+            chunk_prompts = [prompt for (_, _, prompt) in chunk]
+
+            # score_tokenizer.padding_side is set to "left" at load time — batched
+            # decoder-only generation needs every prompt flush against its continuation,
+            # which also gives all rows the same padded prompt length for slicing below.
+            inputs = score_tokenizer(chunk_prompts, return_tensors="pt", padding=True)
+            inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
+
+            # Deterministic (greedy) decoding
+            with torch.no_grad():
+                gen_ids = score_model.generate(
+                    **inputs,
+                    max_new_tokens = SCORE_MAX_NEW_TOKENS,
+                    do_sample = False,
+                    pad_token_id = score_tokenizer.eos_token_id,
+                )
+
+            # Drop the (uniform, left-padded) prompt span, keep only the continuations
+            outputs = score_tokenizer.batch_decode(gen_ids[:, inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+
+            # Write results back into y_hat via each job's coordinates
+            for (i, j, _), output in zip(chunk, outputs):
+                y_hat[i][j] = output.strip()
+
+    return y_hat
 
 
 def get_logprob_scores(
@@ -393,7 +399,7 @@ def run(args_list=None):
 
     # Score Model
     parser.add_argument("--score-fn", type=str, default="LOGPROB", help="Can be either: ROUGE-L | LOGPROB")
-    parser.add_argument("--score-model-name", type=str, default="meta-llama/Llama-3.1-8B-Instruct", help="Can be either: Any OpenAI LLM or HF Model")
+    parser.add_argument("--score-model-name", type=str, default="meta-llama/Llama-3.1-8B-Instruct", help="HF model ids (contain `/`) run locally; bare OpenAI model names use the API (ROUGE-L only)")
 
     # Translator Model
     parser.add_argument("--lora-model-name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
@@ -405,7 +411,8 @@ def run(args_list=None):
     parser.add_argument("-t", "--temperature", type=float, default=0.5)
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--top-p", type=float, default=0.9)
-    parser.add_argument("--score-batch-size", type=int, default=16, help="Micro-batch size used when scoring train instances with the LOGPROB score function")
+    parser.add_argument("--score-batch-size", type=int, default=16, help="Micro-batch size used when scoring train instances with a local HF score model (both score functions)")
+    parser.add_argument("--score-max-new-tokens", type=int, default=256, help="Cap on generated output length per train instance when scoring ROUGE-L with a local HF score model")
     parser.add_argument("--max-retries", type=int, default=5, help="Max resample attempts for a task before giving up on a non-degenerate preference pair")
     parser.add_argument("--retry-temp-increment", type=float, default=0.25, help="Amount to raise sampling temperature by on each retry")
     parser.add_argument("--max-retry-temperature", type=float, default=1.5, help="Cap on the escalated retry temperature")
@@ -414,12 +421,13 @@ def run(args_list=None):
     args, _ = parser.parse_known_args(args_list)
 
     # Define Global Variables
-    global DEVICE, DTYPE, SCORE_FN, SCORE_MODEL_NAME, K, TOP_P, N, TEMPERATURE, MAX_NEW_TOKENS, SCORE_BATCH_SIZE, MAX_RETRIES, RETRY_TEMP_INCREMENT, MAX_RETRY_TEMPERATURE, OPENAI_CONCURRENCY
+    global DEVICE, DTYPE, SCORE_FN, SCORE_MODEL_NAME, SCORE_BACKEND, K, TOP_P, N, TEMPERATURE, MAX_NEW_TOKENS, SCORE_BATCH_SIZE, SCORE_MAX_NEW_TOKENS, MAX_RETRIES, RETRY_TEMP_INCREMENT, MAX_RETRY_TEMPERATURE, OPENAI_CONCURRENCY
 
     # Parse all the arguments into Variables
     MAPPER_DATASET_PATH = args.mapper_dataset_path
     SCORE_FN = args.score_fn
     SCORE_MODEL_NAME = args.score_model_name
+    SCORE_BACKEND = get_score_backend(SCORE_MODEL_NAME)
     LORA_MODEL_NAME = args.lora_model_name
     LORA_WEIGHTS_PATH = args.lora_weights_path
     N = args.num_samples_to_generate
@@ -428,6 +436,7 @@ def run(args_list=None):
     MAX_NEW_TOKENS = args.max_new_tokens
     TOP_P = args.top_p
     SCORE_BATCH_SIZE = args.score_batch_size
+    SCORE_MAX_NEW_TOKENS = args.score_max_new_tokens
     MAX_RETRIES = args.max_retries
     RETRY_TEMP_INCREMENT = args.retry_temp_increment
     MAX_RETRY_TEMPERATURE = args.max_retry_temperature
@@ -471,23 +480,30 @@ def run(args_list=None):
     # ┌───────────────────────────────────────────────┐
     # │                SCORE MODEL PREP               │
     # └───────────────────────────────────────────────┘
-    if SCORE_FN == "ROUGE-L":
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("API key not found. Please add `OPENAI_API_KEY` inside a .env file in project root")
-        
-        global OPENAI_CLIENT
-        OPENAI_CLIENT = OpenAI(
-            api_key=api_key, 
-            max_retries=5,
-        )
+    if SCORE_FN not in ("ROUGE-L", "LOGPROB"):
+        print(f"Unsupported Score Function: {SCORE_FN}!")
+        exit(1)
 
-    elif SCORE_FN == "LOGPROB":
+    if SCORE_BACKEND == "openai":
+        # LOGPROB needs raw logits over the full vocab, which the OpenAI API doesn't expose
+        if SCORE_FN != "ROUGE-L":
+            raise ValueError(f"OpenAI score model `{SCORE_MODEL_NAME}` only supports the ROUGE-L score function, got: {SCORE_FN}")
+
+        global OPENAI_CLIENT
+        OPENAI_CLIENT = init_openai_client()
+
+    else:
         global score_model, score_tokenizer, SHARED_SCORE_MODEL
         score_tokenizer = AutoTokenizer.from_pretrained(SCORE_MODEL_NAME)
 
         # Do this only if score model is from Llama family
         score_tokenizer.pad_token = score_tokenizer.eos_token
+
+        if SCORE_FN == "ROUGE-L":
+            # Batched decoder-only generation needs left padding so every prompt sits
+            # flush against its continuation (Llama defaults to right padding; the
+            # LOGPROB path pads manually and is unaffected either way)
+            score_tokenizer.padding_side = "left"
 
         if SCORE_MODEL_NAME == LORA_MODEL_NAME:
             # Avoid loading a second bf16 copy of the same base model — reuse the
@@ -500,10 +516,6 @@ def run(args_list=None):
             score_model = AutoModelForCausalLM.from_pretrained(SCORE_MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
             score_model.eval()
             SHARED_SCORE_MODEL = False
-
-    else:
-        print(f"Unsupported Score Function: {SCORE_FN}!")
-        exit(1)
 
 
     # ┌───────────────────────────────────────────────┐
