@@ -38,14 +38,16 @@ def run(args_list=None):
         'fs_task_rougeL',
         'soft_task_rougeL',
         'gt_task_rougeL',
-        'mapper_task_rougeL',
+        # 'mapper_task_rougeL',
+        'mapper10x_task_rougeL',
         'inspect_task_rougeL'
     ]
     label_names = [
         'FSL (LLM)',
         'Softprompt (SLM)',
         'Groundtruth (LLM)',
-        'Translator (LLM)',
+        # 'Translator (LLM)',
+        'Translator 10x (LLM)',
         'InSPEcT (LLM)'
     ]
 
