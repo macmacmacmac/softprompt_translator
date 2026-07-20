@@ -307,58 +307,80 @@ def generate_preference_dataset(dataset: List[Dict], translator_model: PeftModel
             # Extract soft prompt
             soft_prompt = task["soft_prompt"].to(DEVICE, dtype=DTYPE)
 
-            # Duplicate it N times
-            soft_prompt_embeds = soft_prompt.unsqueeze(0).expand(N, -1, -1)     # (N, soft_tokens, embed_dim)
-            attention_mask = torch.ones(soft_prompt_embeds.shape[:2], dtype=torch.long, device=DEVICE)
+            # ── Step 1: Greedy-decode z_G (deterministic anchor) ──
+            greedy_embeds = soft_prompt.unsqueeze(0)                               # (1, soft_tokens, embed_dim)
+            greedy_mask = torch.ones(greedy_embeds.shape[:2], dtype=torch.long, device=DEVICE)
 
-            # Pool unique translations across attempts (text -> score, insertion-ordered),
-            # escalating sampling temperature each retry so a mode-collapsed translator has
-            # a chance to produce something other than the same string every time. Also
-            # doubles as a score cache so previously-seen texts aren't rescored.
-            unique_scores: Dict[str, float] = {}
+            with torch.no_grad():
+                greedy_ids = translator_model.generate(
+                    inputs_embeds = greedy_embeds,
+                    attention_mask = greedy_mask,
+                    max_new_tokens = MAX_NEW_TOKENS,
+                    do_sample = False,
+                    pad_token_id = translator_tokenizer.eos_token_id,
+                )
+
+            z_G = translator_tokenizer.decode(greedy_ids[0], skip_special_tokens=True).strip()
+
+            if not z_G:
+                skipped_tasks.append(task["task_name"])
+                tqdm.write(f'Greedy decode produced empty translation! Skipping task: {task["task_name"]}')
+                continue
+
+            # Score the greedy translation
+            score_G = get_scores([z_G], task["train_instances"]).item()
+
+            # ── Step 2: Sample translations until one beats z_G ──
+            # Pool of unique translations -> score (insertion-ordered), seeded with z_G
+            unique_scores: Dict[str, float] = {z_G: score_G}
+
+            sample_embeds = soft_prompt.unsqueeze(0).expand(N, -1, -1)             # (N, soft_tokens, embed_dim)
+            sample_mask = torch.ones(sample_embeds.shape[:2], dtype=torch.long, device=DEVICE)
+
             temperature = TEMPERATURE
             for attempt in range(MAX_RETRIES + 1):
-                # Produce N translations
+                # Produce N sampled translations
                 with torch.no_grad():
                     gen_ids = translator_model.generate(
-                        inputs_embeds = soft_prompt_embeds,
-                        attention_mask = attention_mask,
+                        inputs_embeds = sample_embeds,
+                        attention_mask = sample_mask,
                         max_new_tokens = MAX_NEW_TOKENS,
                         do_sample = True,
                         temperature = temperature,
                         top_p = TOP_P,
-                        pad_token_id = translator_tokenizer.eos_token_id
+                        pad_token_id = translator_tokenizer.eos_token_id,
                     )
 
-                # Decode the N gen_ids into N translations
-                translations = translator_tokenizer.batch_decode(gen_ids, skip_special_tokens = True)
+                translations = translator_tokenizer.batch_decode(gen_ids, skip_special_tokens=True)
                 translations = [txt.strip() for txt in translations]
 
-                # Drop empties and anything already in the pool, then score only the new texts
+                # Score ALL genuinely new, non-empty texts in the full batch
                 new_texts = [txt for txt in translations if txt and txt not in unique_scores]
                 if new_texts:
                     new_scores = get_scores(new_texts, task["train_instances"])
                     for txt, score in zip(new_texts, new_scores.tolist()):
                         unique_scores[txt] = score
 
-                # Success once we have >=2 distinct translations with a genuine score spread
-                # (strict max > min guards exact ties between distinct texts, e.g. under ROUGE-L)
-                if len(unique_scores) >= 2 and max(unique_scores.values()) > min(unique_scores.values()):
-                    break
+                    # Check if any new translation beat z_G
+                    if new_scores.max().item() > score_G:
+                        break
 
                 if attempt < MAX_RETRIES:
                     temperature = min(temperature + RETRY_TEMP_INCREMENT, MAX_RETRY_TEMPERATURE)
                     tqdm.write(
-                        f"Degenerate preference pairs generated for task {task['task_name']} "
+                        f"No sampled translation beat z_G for task {task['task_name']} "
                         f"(attempt {attempt + 1}/{MAX_RETRIES + 1}), retrying with temperature={temperature}..."
                     )
-            else:
-                skipped_tasks.append(task["task_name"])
-                tqdm.write(f'Retries exceeded! Skipping task: {task["task_name"]}')
-                continue
 
+            # ── Step 3: Determine z_W and z_L ──
             z_W = max(unique_scores, key=unique_scores.get)
             z_L = min(unique_scores, key=unique_scores.get)
+
+            # Degenerate: z_W and z_L are the same text → skip
+            if z_W == z_L:
+                skipped_tasks.append(task["task_name"])
+                tqdm.write(f'All scores identical! Skipping task: {task["task_name"]}')
+                continue
 
             # Calculate log prob of producing z_W and z_L using the translator, conditioned on the soft prompt
             logp_ref_z_W = get_logprob_of_translation_given_soft_prompt(translator_model, translator_tokenizer, z_W, soft_prompt)
@@ -408,14 +430,14 @@ def run(args_list=None):
     # HyperParams
     parser.add_argument("-n", "--num-samples-to-generate", type=int, default=10)
     parser.add_argument("-k", "--scaling-factor", type=int, default=1)
-    parser.add_argument("-t", "--temperature", type=float, default=0.5)
+    parser.add_argument("-t", "--temperature", type=float, default=1.0)
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--top-p", type=float, default=0.9)
     parser.add_argument("--score-batch-size", type=int, default=64, help="Micro-batch size used when scoring train instances with a local HF score model (both score functions)")
     parser.add_argument("--score-max-new-tokens", type=int, default=128, help="Cap on generated output length per train instance when scoring ROUGE-L with a local HF score model")
     parser.add_argument("--max-retries", type=int, default=5, help="Max resample attempts for a task before giving up on a non-degenerate preference pair")
     parser.add_argument("--retry-temp-increment", type=float, default=0.25, help="Amount to raise sampling temperature by on each retry")
-    parser.add_argument("--max-retry-temperature", type=float, default=1.5, help="Cap on the escalated retry temperature")
+    parser.add_argument("--max-retry-temperature", type=float, default=2.0, help="Cap on the escalated retry temperature")
     parser.add_argument("--openai-concurrency", type=int, default=32, help="Number of worker threads for concurrent OpenAI scoring calls (ROUGE-L score function only)")
 
     args, _ = parser.parse_known_args(args_list)
