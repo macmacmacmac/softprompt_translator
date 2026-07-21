@@ -14,13 +14,17 @@ nvidia-smi
 # -----------------------------
 # Run the 70B Mapper Training
 # -----------------------------
-# python -u -m run_experiment \
-#   --scripts soft_prompt_mapper.supernat_instruct_DoD.train_mapper \
-#   --model_name meta-llama/Llama-3.1-70B-Instruct \
-#   --batch_size 2
-
-
 python -u -m run_experiment \
-  --scripts soft_prompt_mapper.supernat_instruct_DoD.test_mapper \
+  --scripts soft_prompt_mapper.supernat_instruct_DoD.train_mapper \
   --model_name meta-llama/Llama-3.1-70B-Instruct \
-  --batch_size 16
+  --batch_size 8 \
+  --mapper_dataset_path ./shared/datasets/mapper_training_dataset/General-DoD-10x
+
+
+# -----------------------------
+# Run the 70B Mapper Testing
+# -----------------------------
+# python -u -m run_experiment \
+#   --scripts soft_prompt_mapper.supernat_instruct_DoD.test_mapper \
+#   --model_name meta-llama/Llama-3.1-70B-Instruct \
+#   --batch_size 16

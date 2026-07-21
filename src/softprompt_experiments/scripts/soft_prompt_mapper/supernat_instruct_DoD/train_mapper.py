@@ -88,12 +88,12 @@ def run(args_list=None):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
-    parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--epochs", type=int, default=5)
+    parser.add_argument("--lr", type=float, default=1e-5)
+    parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--num_tokens", type=int, default=20)
     parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD")
-    parser.add_argument("--lora_save_dir", type=str, default="./shared/mapper_lora_weights")
+    parser.add_argument("--lora_save_dir", type=str, default="./shared/mapper_lora_weights_underfit")
     parser.add_argument("--lora_rank", type=int, default=4)
     parser.add_argument("--lora_dropout", type=float, default=0.1)
     parser.add_argument("--optim_weight_decay", type=float, default=0.1) 
@@ -230,6 +230,9 @@ def run(args_list=None):
     # ┌───────────────────────────────────────────────┐
     # │                 TRAINING LOOP                 │
     # └───────────────────────────────────────────────┘
+    best_val_rouge_l = -1.0
+    best_epoch = -1
+
     # Loop EPOCHS times
     for epoch in range(EPOCHS):
 
@@ -424,13 +427,22 @@ def run(args_list=None):
         tqdm.write(f"Train -> Loss: {avg_train_loss: .4f} | ROUGE-L: {avg_train_rouge_l: .2f}")
         tqdm.write(f"Val   -> Loss: {avg_val_loss: .4f} | ROUGE-L: {avg_val_rouge_l: .2f}\n")
 
+        # Save model weights if current epoch achieved the best validation ROUGE-L
+        if avg_val_rouge_l > best_val_rouge_l:
+            best_val_rouge_l = avg_val_rouge_l
+            best_epoch = epoch + 1
+            os.makedirs(LORA_SAVE_DIR, exist_ok=True)
+            model.save_pretrained(LORA_SAVE_DIR)
+            tokenizer.save_pretrained(LORA_SAVE_DIR)
+            if soft_prompt_projection is not None:
+                torch.save(soft_prompt_projection.state_dict(),
+                           os.path.join(LORA_SAVE_DIR, "soft_prompt_projection.pt"))
+            tqdm.write(f"--> Saved new best model weights (Epoch {best_epoch}, Val ROUGE-L: {best_val_rouge_l:.4f}) to {LORA_SAVE_DIR}\n")
+
     # ┌───────────────────────────────────────────────┐
-    # │               SAVE LORA ADAPTERS              │
+    # │               SAVE SUMMARY LOG                │
     # └───────────────────────────────────────────────┘
-    os.makedirs(LORA_SAVE_DIR, exist_ok=True)
-    model.save_pretrained(LORA_SAVE_DIR)
-    tokenizer.save_pretrained(LORA_SAVE_DIR)
-    if soft_prompt_projection is not None:
-        torch.save(soft_prompt_projection.state_dict(),
-                   os.path.join(LORA_SAVE_DIR, "soft_prompt_projection.pt"))
-    print(f"Mapper training complete! PEFT LoRA weights saved to {LORA_SAVE_DIR}")
+    if best_epoch != -1:
+        print(f"Mapper training complete! Best PEFT LoRA weights (Epoch {best_epoch}, Val ROUGE-L: {best_val_rouge_l:.4f}) saved to {LORA_SAVE_DIR}")
+    else:
+        print(f"Mapper training complete! No weights saved to {LORA_SAVE_DIR}")
