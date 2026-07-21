@@ -93,7 +93,7 @@ def run(args_list=None):
     print("=" * 100)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", type=str, default="./shared/verbalizations/updated_master_verbalizations_v3.json")
+    parser.add_argument("--input", type=str, default="./shared/verbalizations/master_verbalizations_v3.json")
     parser.add_argument("--output", type=str, default="./shared/verbalizations/test.json")
     parser.add_argument("--model", type=str, default="gpt-4o-mini")
 
@@ -132,7 +132,7 @@ def run(args_list=None):
         train_instances = dataset["train_instances"]
 
         mapper_prompt = str(dataset["mapper_hard_prompt"])
-        mapper10x_prompt = str(dataset["mapper10x_hard_prompt"])
+        mapper10x_prompt = str(dataset["mapper10x_logprob_z_W_z_G"])
         inspect_prompt = str(dataset["inspect_hard_prompt"])
 
         fs_examples = "\n".join([f"Input: {t['input']}\nOutput: {t['output']}\n" for t in train_instances])
@@ -171,7 +171,7 @@ def run(args_list=None):
 
             if do_mapper10x or do_all:
                 mapper10x_pred = get_llm_prediction(SYSTEM_PROMPT, mapper10x_usr_prompt, model=MODEL)
-                instance["mapper10x_output"] = mapper10x_pred
+                instance["mapper10x_logprob_z_W_z_G_output"] = mapper10x_pred
                 mapper10x_preds.append(mapper10x_pred)
 
             if do_inspect or do_all:
@@ -201,7 +201,7 @@ def run(args_list=None):
             )["rougeL"]
 
         if do_mapper10x or do_all:
-            dataset["mapper10x_task_rougeL"] = ROUGE_METRIC.compute(
+            dataset["mapper10x_logprob_z_W_z_G_task_rougeL"] = ROUGE_METRIC.compute(
                 predictions=mapper10x_preds,
                 references=refs,
                 use_stemmer=True
