@@ -15,6 +15,7 @@
 !requirements.txt
 !.gitignore
 !run_job.sh
+!run_job_70b.sh
 
 # Ignore all Python cache files everywhere
 __pycache__/

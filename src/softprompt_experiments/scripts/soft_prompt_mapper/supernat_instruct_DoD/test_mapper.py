@@ -82,11 +82,25 @@ def run(args_list=None):
     tokenizer.pad_token = tokenizer.eos_token
 
     print(f"Loading base model {MODEL_NAME}...")
-    base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
+    base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map="auto")
 
     print(f"Loading LoRA adapters from {LORA_DIR}...")
     model = PeftModel.from_pretrained(base_model, LORA_DIR)
     model.eval()
+
+    # Load soft prompt projection layer if saved alongside LoRA weights
+    projection_path = os.path.join(LORA_DIR, "soft_prompt_projection.pt")
+    if os.path.exists(projection_path):
+        SP_DIM = test_samples[0]["soft_prompt"].shape[-1]
+        MODEL_DIM = base_model.config.hidden_size
+        soft_prompt_projection = torch.nn.Linear(SP_DIM, MODEL_DIM, bias=False)
+        soft_prompt_projection.load_state_dict(
+            torch.load(projection_path, map_location=base_model.device, weights_only=True)
+        )
+        soft_prompt_projection.to(dtype=DTYPE, device=base_model.device).eval()
+        print(f"Loaded soft prompt projection ({SP_DIM} \u2192 {MODEL_DIM})")
+    else:
+        soft_prompt_projection = None
 
     # ┌───────────────────────────────────────────────┐
     # │                 INFERENCE LOOP                │
@@ -109,6 +123,8 @@ def run(args_list=None):
             
             # Stack soft prompts: (batch_size, seq_len, embed_dim)
             soft_prompts = torch.stack([s["soft_prompt"] for s in batch_samples]).to(DEVICE, dtype=DTYPE)
+            if soft_prompt_projection is not None:
+                soft_prompts = soft_prompt_projection(soft_prompts)
             
             # Create an attention mask for the batch: (batch_size, seq_len)
             attention_mask = torch.ones(soft_prompts.shape[:2], dtype=torch.long, device=DEVICE)
