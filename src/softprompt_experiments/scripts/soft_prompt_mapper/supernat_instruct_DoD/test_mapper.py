@@ -23,9 +23,10 @@ def run(args_list=None):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
-    parser.add_argument("--mapper_dataset_path", type=str, default="./datasets/mapper_training_dataset/General-DoD")
+    parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD")
+    parser.add_argument("--master_verbalizations_path", type=str, default="./shared/verbalizations/master_verbalizations_v3.json")
     parser.add_argument("--sample", action='store_true', help="Use a sample of val dataset instead of the full val dataset")
-    parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights/General-DoD")
+    parser.add_argument("--lora_dir", type=str, default="./shared/mapper_lora_weights/General-DoD")
     parser.add_argument("--num_samples", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_tokens", type=int, default=20)
@@ -43,7 +44,7 @@ def run(args_list=None):
     SEED = args.seed
     DO_SAMPLE = args.do_sample
     EMBED_MODEL_NAME = args.embed_model_name
-    OUTPUT_JSON_PATH = os.path.join(LORA_DIR, "verbalizations.json")
+    MASTER_VERBALIZATIONS_PATH = args.master_verbalizations_path
 
     # Set the Seed for this experiment
     random.seed(SEED)
@@ -173,8 +174,20 @@ def run(args_list=None):
                     "val_instances": val_instances_list[j]
                 })
 
+    # Merge results into master verbaliztions
+    # Uncomment as per need
+    with open(MASTER_VERBALIZATIONS_PATH, "r") as f:
+        master_verbalizations = json.load(f)
+        assert len(master_verbalizations) == len(results_data)
+
+    for m, r in zip(master_verbalizations, results_data):
+        assert m["task_name"] == r["task_name"]
+        m["mapper70b_hard_prompt"] = r["mapper_hard_prompt"]
+        m["mapper70b_hard_prompt_rougeL"] = r["mapper_hard_prompt_rougeL"]
+        m["mapper70b_hard_prompt_cos_sim"] = r["mapper_hard_prompt_cos_sim"]
+
+
     # Save to JSON
-    print(f"\nSaving results to {OUTPUT_JSON_PATH}...")
-    with open(OUTPUT_JSON_PATH, "w") as f:
-        json.dump(results_data, f, indent=4)
+    with open("./shared/verbalizations/test.json", "w") as f:
+        json.dump(master_verbalizations, f, indent=4)
     print("Done!\n")

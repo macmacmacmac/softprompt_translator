@@ -78,6 +78,13 @@ def run(args_list=None):
         "="*100,"\n"
     )
 
+    if torch.cuda.is_available():
+        print(f"Total GPUs: {torch.cuda.device_count()}")
+        for i in range(torch.cuda.device_count()):
+            print(f"GPU {i}: {torch.cuda.get_device_name(i)}")
+    else:
+        print("No CUDA GPU available.")
+
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
@@ -85,8 +92,8 @@ def run(args_list=None):
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--num_tokens", type=int, default=20)
-    parser.add_argument("--mapper_dataset_path", type=str, default="./datasets/mapper_training_dataset/General-DoD")
-    parser.add_argument("--lora_save_dir", type=str, default="./mapper_lora_weights")
+    parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD")
+    parser.add_argument("--lora_save_dir", type=str, default="./shared/mapper_lora_weights")
     parser.add_argument("--lora_rank", type=int, default=4)
     parser.add_argument("--lora_dropout", type=float, default=0.1)
     parser.add_argument("--optim_weight_decay", type=float, default=0.1) 
@@ -113,6 +120,8 @@ def run(args_list=None):
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     # DEVICE = "cpu"
     DTYPE = torch.bfloat16 if DEVICE == "cuda" else torch.float32
+
+    print(f"Using DEVICE: {DEVICE}")
 
     # Load Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
