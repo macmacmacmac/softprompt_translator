@@ -102,6 +102,7 @@ def run(args_list=None):
 
     parser.add_argument("--do_all", action="store_true")
     parser.add_argument("--do_fs", action="store_true")
+    parser.add_argument("--do_fsr", action="store_true")
     parser.add_argument("--do_mapper", action="store_true")
     parser.add_argument("--do_gt", action="store_true")
     parser.add_argument("--do_inspect", action="store_true")
@@ -110,6 +111,7 @@ def run(args_list=None):
 
     do_all = args.do_all
     do_fs = args.do_fs
+    do_fsr = args.do_fsr
     do_mapper = args.do_mapper
     do_gt = args.do_gt
     do_inspect = args.do_inspect
@@ -134,15 +136,17 @@ def run(args_list=None):
 
         mapper_prompt = str(dataset["mapper_hard_prompt"])
         inspect_prompt = str(dataset["inspect_hard_prompt"])
+        fsr_prompt = str(dataset["fs_hard_prompt"])
+        gt_prompt = str(dataset["hard_prompt"])
 
         fs_examples = "\n".join([f"Input: {t['input']}\nOutput: {t['output']}\n" for t in train_instances])
         fs_prompt = FS_TASK_PROMPT.format(examples=fs_examples)
 
-        gt_prompt = str(dataset["hard_prompt"])
 
 
         mapper_preds = []
         inspect_preds = []
+        fsr_preds = []
         fs_preds = []
         gt_preds = []
 
@@ -154,6 +158,7 @@ def run(args_list=None):
 
             mapper_usr_prompt = USR_PROMPT.format(task_prompt = mapper_prompt, input = input)
             inspect_usr_prompt = USR_PROMPT.format(task_prompt = inspect_prompt, input = input)
+            fsr_usr_prompt = USR_PROMPT.format(task_prompt = fsr_prompt, input = input)
             fs_usr_prompt = USR_PROMPT.format(task_prompt = fs_prompt, input = input)
             gt_usr_prompt = USR_PROMPT.format(task_prompt = gt_prompt, input = input)
 
@@ -168,6 +173,11 @@ def run(args_list=None):
                 inspect_pred = get_llm_prediction(SYSTEM_PROMPT, inspect_usr_prompt, model=MODEL)
                 instance["inspect_output"] = inspect_pred
                 inspect_preds.append(inspect_pred)
+
+            if do_fsr or do_all:
+                fsr_pred = get_llm_prediction(SYSTEM_PROMPT, fsr_usr_prompt, model=MODEL)
+                instance["fsr_output"] = fsr_pred
+                fsr_preds.append(fsr_pred)
 
             if do_fs or do_all:
                 fs_pred = get_llm_prediction(SYSTEM_PROMPT, fs_usr_prompt, model=MODEL)
@@ -196,6 +206,13 @@ def run(args_list=None):
                 use_stemmer=True
             )["rougeL"]
 
+        if do_fsr or do_all:
+            dataset["fsr_task_rougeL"] = ROUGE_METRIC.compute(
+                predictions=fsr_preds,
+                references=refs,
+                use_stemmer=True
+            )["rougeL"]
+
         if do_fs or do_all:
             dataset["fs_task_rougeL"] = ROUGE_METRIC.compute(
                 predictions=fs_preds,
@@ -219,6 +236,6 @@ def run(args_list=None):
             json.dump(data, f, indent=4)
 
 
-        verbalizations_rougeL_visualizer.run(args_list)
+    verbalizations_rougeL_visualizer.run(args_list)
 
 
