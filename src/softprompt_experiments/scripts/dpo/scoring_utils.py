@@ -11,6 +11,11 @@ from tqdm import tqdm
 from typing import List, Dict, Tuple
 import evaluate
 from vllm import LLM, SamplingParams
+import logging
+
+# Silence verbose rouge-scorer logs
+logging.getLogger("rouge_scorer").setLevel(logging.WARNING)
+
 
 
 # ┌───────────────────────────────────────────────┐
@@ -115,6 +120,8 @@ def init_scoring(
             model=SCORE_MODEL_NAME, 
             dtype=vllm_dtype,
             gpu_memory_utilization=vllm_gpu_memory_utilization,
+            max_model_len=8192,
+            enable_prefix_caching=True, # Hugely improves performance for shared prefixes
             enforce_eager=True, # Saves CUDA graph memory
         )
         SHARED_SCORE_MODEL = False
@@ -512,19 +519,48 @@ def get_logprob_of_output_given_prompt(
     return torch.cat(per_row_scores, dim=0)
 
 
+# def _sum_sequence_logprob(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+#     # Shift so that logits at position i predict the token at position i+1
+#     shift_logits = logits[:, :-1, :]            # (batch_size, seq_len - 1, vocab_size)
+#     shift_labels = labels[:, 1:]                # (batch_size, seq_len - 1)
+
+#     # Fused cross-entropy = -log P(label); ignore_index zeroes the -100 positions
+#     # without materializing a full-vocab log-prob tensor like log_softmax would
+#     loss = F.cross_entropy(
+#         shift_logits.flatten(0, 1).float(),
+#         shift_labels.flatten(),
+#         reduction="none",
+#         ignore_index=-100,
+#     ).view(shift_labels.shape)
+
+#     # Sum log-probs over the valid (non -100) sequence positions
+#     return -loss.sum(dim=-1)   # (batch_size,)
+
+
 def _sum_sequence_logprob(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
     # Shift so that logits at position i predict the token at position i+1
     shift_logits = logits[:, :-1, :]            # (batch_size, seq_len - 1, vocab_size)
     shift_labels = labels[:, 1:]                # (batch_size, seq_len - 1)
 
-    # Fused cross-entropy = -log P(label); ignore_index zeroes the -100 positions
-    # without materializing a full-vocab log-prob tensor like log_softmax would
-    loss = F.cross_entropy(
-        shift_logits.flatten(0, 1).float(),
-        shift_labels.flatten(),
-        reduction="none",
-        ignore_index=-100,
-    ).view(shift_labels.shape)
+    flat_logits = shift_logits.flatten(0, 1)    # (batch_size * (seq_len - 1), vocab_size)
+    flat_labels = shift_labels.flatten()        # (batch_size * (seq_len - 1),)
 
-    # Sum log-probs over the valid (non -100) sequence positions
+    # Filter out -100 before casting to float32 to save massive amounts of VRAM
+    valid_mask = flat_labels != -100
+    valid_logits = flat_logits[valid_mask].float()
+    valid_labels = flat_labels[valid_mask]
+
+    # Compute loss only on valid output tokens
+    valid_loss = F.cross_entropy(
+        valid_logits,
+        valid_labels,
+        reduction="none"
+    )
+
+    # Reconstruct the loss tensor
+    loss = torch.zeros_like(flat_labels, dtype=torch.float32)
+    loss[valid_mask] = valid_loss
+    loss = loss.view(shift_labels.shape)
+
+    # Sum log-probs over the valid sequence positions
     return -loss.sum(dim=-1)   # (batch_size,)
