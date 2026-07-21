@@ -147,7 +147,7 @@ def run(args_list=None):
 
     # vLLM Config
     parser.add_argument("--use-vllm", action="store_true", help="Use vLLM backend for local HF score models (speeds up ROUGE-L scoring)")
-    parser.add_argument("--vllm-gpu-memory-utilization", type=float, default=0.45, help="GPU memory fraction for vLLM (keep it <0.5 to leave room for the translator model)")
+    parser.add_argument("--vllm-gpu-memory-utilization", type=float, default=0.55, help="GPU memory fraction for vLLM (keep it <0.5 to leave room for the translator model)")
 
     # Translator Model
     parser.add_argument("--lora-model-name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")

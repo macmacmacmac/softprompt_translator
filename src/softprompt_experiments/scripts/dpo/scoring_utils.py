@@ -12,10 +12,11 @@ from typing import List, Dict, Tuple
 import evaluate
 from vllm import LLM, SamplingParams
 import logging
+import absl.logging
 
-# Silence verbose rouge-scorer logs
+# Silence verbose rouge-scorer logs (handles both standard logging and absl)
 logging.getLogger("rouge_scorer").setLevel(logging.WARNING)
-
+absl.logging.set_verbosity(absl.logging.WARNING)
 
 
 # ┌───────────────────────────────────────────────┐
@@ -329,7 +330,7 @@ def generate_outputs_vllm(
     )
     
     # vLLM handles batching internally
-    outputs = score_model.generate(prompts, sampling_params, use_tqdm=True)
+    outputs = score_model.generate(prompts, sampling_params, use_tqdm=False)
 
     for (i, j), output in zip(jobs, outputs):
         y_hat[i][j] = output.outputs[0].text.strip()
