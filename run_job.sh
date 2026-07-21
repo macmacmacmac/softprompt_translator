@@ -1,14 +1,14 @@
 #!/bin/bash
 #SBATCH -N 1
-#SBATCH -n 8
+#SBATCH -n 2
 #SBATCH --mem=16g
-#SBATCH -J "Retrain"
+#SBATCH -J "PrefData"
 #SBATCH -p long
-#SBATCH -t 5-00:00:00
+#SBATCH -t 2-00:00:00
 #SBATCH --gres=gpu:1
-#SBATCH -C L40S
-#SBATCH -o retrain.out
-#SBATCH -e retrain.out
+#SBATCH -C A100
+#SBATCH -o logprob10x.out
+#SBATCH -e logprob10x.out
 
 # -----------------------------
 # Load Required Modules
@@ -37,7 +37,6 @@ export PYTORCH_ALLOC_CONF=expandable_segments:True
 # -----------------------------
 # Run the Job (Example: Python Script / Module)
 # -----------------------------
-python -u -m run_experiment --scripts soft_prompt_mapper.supernat_instruct_DoD.train_softprompts --save_dir ./trained_soft_prompts/General-DoD-wt-decay
-# python -u -m run_experiment --scripts soft_prompt_mapper.supernat_instruct_DoD.apply_InSPEcT_on_DoD --peft
-# python -u -m run_experiment --scripts soft_prompt_mapper.supernat_instruct_DoD.generate_paraphrasals
-# python -u -m run_experiment --scripts soft_prompt_mapper.classification_DoD.inference_mapper_dataset
+python -u -m run_experiment --scripts dpo.generate_preference_dataset -n 10
+# python -u -m run_experiment --scripts dpo.generate_preference_dataset --score-fn ROUGE-L
+
