@@ -39,3 +39,8 @@ visualizations/
 
 
 !verbalizations/*.json
+
+
+# Allow CLAUDE.md and AGENTS.md
+!CLAUDE.md
+!AGENTS.md
