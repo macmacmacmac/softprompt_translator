@@ -7,7 +7,7 @@ from peft import PeftModel, LoraConfig, get_peft_model, TaskType
 from tqdm import tqdm
 import evaluate
 import ipdb
-import torch.nn.Functional as F
+import torch.nn.functional as F
 
 from softprompt_experiments.scripts.dpo import DPOCollator
 
@@ -66,15 +66,19 @@ def get_logprob(soft_prompts, tokenized, model, llama_word_embeddings):
     vocab_size = logits.shape[-1]
 
     # Get log probs
-    log_prob = -F.cross_entropy(
+    losses = F.cross_entropy(
         logits[:, :-1].reshape(-1, vocab_size),
-        labels[:, 1:].reshape(-1),
+        full_labels[:, 1:].reshape(-1),
         ignore_index=-100,
-        reduction="sum",
+        reduction="none",
     )
+    # (batch_size, seq_len + softlen - 1)
+    losses = losses.view(batchsize, -1)
 
-    log_prob = F.log_softmax(logits[:, :-1], dim=-1)
-    log_prob = -torch.gather(log_prob, dim=-1, index=labels[:, 1:].unsqueeze(-1))
+    # Sum over tokens to get one log-prob per sequence
+    log_prob = -losses.sum(dim=1)
+
+    # ipdb.set_trace()
 
     return log_prob
 
@@ -92,18 +96,19 @@ def run(args_list=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--epochs", type=int, default=5)
+    parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--mapper_dataset_path", type=str, default="./datasets/mapper_training_dataset/General-DoD")
-    parser.add_argument("--mapper_read_dir", type=str, default="./mapper_lora_weights")
-    parser.add_argument("--dpo_save_dir", type=str, default="./mapper_lora_weights")
+    parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/dpo_preference_datasets/10xtranslator_LOGPROBscore_10n_1k_0.5temp")
+    parser.add_argument("--mapper_weights_dir", type=str, default="./shared/mapper_lora_weights/General-DoD-10x/meta-llama/Llama-3.1-8B-Instruct")
+    parser.add_argument("--dpo_save_dir", type=str, default="./shared/mapper_lora_weights/DPO_General-DoD-10x/meta-llama/Llama-3.1-8B-Instruct")
     parser.add_argument("--optim_weight_decay", type=float, default=0.1) 
-    parser.add_argument("--beta", type=float, default=1.0) 
+    parser.add_argument("--beta", type=float, default=0.1) 
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables
     MODEL_NAME = args.model_name
     MAPPER_DATASET_PATH = args.mapper_dataset_path
+    MAPPER_WEIGHTS_PATH = args.mapper_weights_dir
     DPO_MAPPER_SAVE_PATH = args.dpo_save_dir
     LR = args.lr
     EPOCHS = args.epochs
@@ -128,10 +133,10 @@ def run(args_list=None):
     base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
     base_model.gradient_checkpointing_enable()
 
-    print(f"Loading LoRA adapter from {MAPPER_DATASET_PATH}...")
+    print(f"Loading LoRA adapter from {MAPPER_WEIGHTS_PATH}...")
     model = PeftModel.from_pretrained(
         base_model,
-        MAPPER_DATASET_PATH,
+        MAPPER_WEIGHTS_PATH,
         is_trainable=True,   # important: continue training
     )    
 
@@ -151,8 +156,8 @@ def run(args_list=None):
     # │                   DATASET PREP                │
     # └───────────────────────────────────────────────┘
     print("Loading Train and Validation datasets ...")
-    train_dataset = torch.load(os.path.join(MAPPER_DATASET_PATH, 'train_mapper_dataset.pt'), map_location="cpu", weights_only=True)
-    val_dataset = torch.load(os.path.join(MAPPER_DATASET_PATH, 'val_mapper_dataset.pt'), map_location="cpu", weights_only=True)
+    train_dataset = torch.load(os.path.join(MAPPER_DATASET_PATH, 'train_dataset.pt'), map_location="cpu", weights_only=True)
+    val_dataset = torch.load(os.path.join(MAPPER_DATASET_PATH, 'val_dataset.pt'), map_location="cpu", weights_only=True)
     
     print(f"Train Dataset size: {len(train_dataset)} | Validation Dataset size: {len(val_dataset)}")
 
@@ -205,8 +210,8 @@ def run(args_list=None):
 
             z_prime = batch["z_prime"].to(DEVICE, dtype=DTYPE) # (batch_size, soft_prompt_len, embed_dim)
            
-            z_W_tokenized = batch["z_W_tokenized"].to(DEVICE, dtype=DTYPE)
-            z_L_tokenized = batch["z_L_tokenized"].to(DEVICE, dtype=DTYPE)
+            z_W_tokenized = batch["z_W_tokenized"].to(DEVICE)
+            z_L_tokenized = batch["z_L_tokenized"].to(DEVICE)
 
             log_p_ref_z_W = batch["log_p_ref_z_W"].to(DEVICE, dtype=DTYPE)
             log_p_ref_z_L = batch["log_p_ref_z_L"].to(DEVICE, dtype=DTYPE)
@@ -252,8 +257,8 @@ def run(args_list=None):
 
                 z_prime = batch["z_prime"].to(DEVICE, dtype=DTYPE) # (batch_size, soft_prompt_len, embed_dim)
             
-                z_W_tokenized = batch["z_W_tokenized"].to(DEVICE, dtype=DTYPE)
-                z_L_tokenized = batch["z_L_tokenized"].to(DEVICE, dtype=DTYPE)
+                z_W_tokenized = batch["z_W_tokenized"].to(DEVICE)
+                z_L_tokenized = batch["z_L_tokenized"].to(DEVICE)
 
                 log_p_ref_z_W = batch["log_p_ref_z_W"].to(DEVICE, dtype=DTYPE)
                 log_p_ref_z_L = batch["log_p_ref_z_L"].to(DEVICE, dtype=DTYPE)

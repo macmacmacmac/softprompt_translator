@@ -95,7 +95,7 @@ def run(args_list=None):
     print("=" * 100)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", type=str, default="./shared/verbalizations/updated_master_verbalizations_v3.json")
+    parser.add_argument("--input", type=str, default="./shared/verbalizations/master_verbalizations_v3.json")
     parser.add_argument("--output", type=str, default="./shared/verbalizations/test.json")
     parser.add_argument("--model", type=str, default="gpt-4o-mini")
 
@@ -106,6 +106,7 @@ def run(args_list=None):
     parser.add_argument("--do_gt", action="store_true")
     parser.add_argument("--do_inspect", action="store_true")
     parser.add_argument("--do_mapper10x", action="store_true")
+    parser.add_argument("--do_dpo", action="store_true")
 
     args, _ = parser.parse_known_args(args_list)
 
@@ -137,6 +138,7 @@ def run(args_list=None):
 
         mapper_prompt = str(dataset["mapper_hard_prompt"])
         mapper10x_prompt = str(dataset["mapper10x_hard_prompt"])
+        dpo_prompt = str(dataset["dpo_10x_round1_hard_prompt"])
         inspect_prompt = str(dataset["inspect_hard_prompt"])
         fsr_prompt = str(dataset["fs_hard_prompt"])
         gt_prompt = str(dataset["hard_prompt"])
@@ -144,11 +146,9 @@ def run(args_list=None):
         fs_examples = "\n".join([f"Input: {t['input']}\nOutput: {t['output']}\n" for t in train_instances])
         fs_prompt = FS_TASK_PROMPT.format(examples=fs_examples)
 
-
-        
-
         mapper_preds = []
         mapper10x_preds = []
+        dpo_preds = []
         inspect_preds = []
         fsr_preds = []
         fs_preds = []
@@ -157,24 +157,31 @@ def run(args_list=None):
 
         refs = []
 
+        # TODO: refact to use vLLM for inference instead with local LLM for these calls
+        # we'll use llama 3.1 8b Instruct
+        # ideally also make use of batching 
         for instance in val_instances:
             input = instance["input"]
             gt_output = instance["output"]
 
             mapper_usr_prompt = USR_PROMPT.format(task_prompt = mapper_prompt, input = input)
             mapper10x_usr_prompt = USR_PROMPT.format(task_prompt = mapper10x_prompt, input = input)
+            dpo_usr_prompt = USR_PROMPT.format(task_prompt = dpo_prompt, input = input)
             inspect_usr_prompt = USR_PROMPT.format(task_prompt = inspect_prompt, input = input)
             fsr_usr_prompt = USR_PROMPT.format(task_prompt = fsr_prompt, input = input)
             fs_usr_prompt = USR_PROMPT.format(task_prompt = fs_prompt, input = input)
             gt_usr_prompt = USR_PROMPT.format(task_prompt = gt_prompt, input = input)
             
 
-            
-
             if do_mapper or do_all:
                 mapper_pred = get_llm_prediction(SYSTEM_PROMPT, mapper_usr_prompt, model=MODEL)
                 instance["mapper_output"] = mapper_pred
                 mapper_preds.append(mapper_pred)
+
+            if do_mapper10x or do_all:
+                mapper10x_pred = get_llm_prediction(SYSTEM_PROMPT, mapper10x_usr_prompt, model=MODEL)
+                instance["mapper10x_output"] = mapper10x_pred
+                mapper10x_preds.append(mapper10x_pred)
 
             if do_mapper10x or do_all:
                 mapper10x_pred = get_llm_prediction(SYSTEM_PROMPT, mapper10x_usr_prompt, model=MODEL)

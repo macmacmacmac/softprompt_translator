@@ -1,4 +1,5 @@
 import torch
+import ipdb
 
 class DPOCollator:
     """
@@ -17,8 +18,10 @@ class DPOCollator:
         z_prime, z_W, z_L, logp_ref_z_W, logp_ref_z_L = zip(*batch)
 
         # Stack the log probs into a batch
-        logp_ref_z_W = torch.stack(logp_ref_z_W.unsqueeze(0))
-        logp_ref_z_L = torch.stack(logp_ref_z_L.unsqueeze(0))
+        logp_ref_z_W = [torch.tensor(w) for w in logp_ref_z_W]
+        logp_ref_z_L = [torch.tensor(l) for l in logp_ref_z_L]
+        logp_ref_z_W = torch.stack(logp_ref_z_W)
+        logp_ref_z_L = torch.stack(logp_ref_z_L)
 
         # Stack the frozen soft prompts into a batch: (batch_size, soft_prompt_len, embed_dim)
         z_prime = torch.stack(z_prime)        # (batch_size, soft_prompt_len, embed_dim)

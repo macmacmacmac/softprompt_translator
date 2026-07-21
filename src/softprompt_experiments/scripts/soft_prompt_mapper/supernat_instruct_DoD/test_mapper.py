@@ -24,9 +24,10 @@ def run(args_list=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
     parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD-10x")
-    parser.add_argument("--master_verbalizations_path", type=str, default="./shared/verbalizations/updated_master_verbalizations_v3.json")
+    parser.add_argument("--master_verbalizations_path", type=str, default="./shared/verbalizations/master_verbalizations_v3.json")
+    parser.add_argument("--fieldname_to_save", type=str, default="dpo_10x_round1")
     parser.add_argument("--sample", action='store_true', help="Use a sample of val dataset instead of the full val dataset")
-    parser.add_argument("--lora_dir", type=str, default="./shared/mapper_lora_weights/General-DoD-10x")
+    parser.add_argument("--lora_dir", type=str, default="./shared/mapper_lora_weights/DPO_General-DoD-10x/")
     parser.add_argument("--num_samples", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_tokens", type=int, default=20)
@@ -122,7 +123,8 @@ def run(args_list=None):
                 do_sample=DO_SAMPLE,
                 temperature=0.7 if DO_SAMPLE else None,
                 top_p=0.9 if DO_SAMPLE else None,
-                pad_token_id=tokenizer.eos_token_id
+                pad_token_id=tokenizer.eos_token_id,
+                eos_token_id=tokenizer.eos_token_id
             )
             
             # Decode the batched outputs
@@ -166,9 +168,9 @@ def run(args_list=None):
 
     for m, r in zip(master_verbalizations, results_data):
         assert m["task_name"] == r["task_name"]
-        m["mapper10x_hard_prompt"] = r["mapper_hard_prompt"]
-        m["mapper10x_hard_prompt_rougeL"] = r["mapper_hard_prompt_rougeL"]
-        m["mapper10x_hard_prompt_cos_sim"] = r["mapper_hard_prompt_cos_sim"]
+        m[f"{args.fieldname_to_save}_hard_prompt"] = r["mapper_hard_prompt"]
+        m[f"{args.fieldname_to_save}_hard_prompt_rougeL"] = r["mapper_hard_prompt_rougeL"]
+        m[f"{args.fieldname_to_save}_hard_prompt_cos_sim"] = r["mapper_hard_prompt_cos_sim"]
 
 
     # Save to JSON
