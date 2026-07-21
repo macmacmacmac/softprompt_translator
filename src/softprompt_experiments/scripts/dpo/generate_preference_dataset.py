@@ -23,7 +23,7 @@ load_dotenv()
 # └───────────────────────────────────────────────┘
 def generate_preference_dataset(dataset: List[Dict], translator_model: PeftModel, translator_tokenizer: AutoTokenizer) -> List[Dict]:
     preference_dataset = []
-    skipped_tasks = []
+    degenerate_tasks = []
     for k in range(K):
         for task in tqdm(dataset, desc=f"Round {k + 1}/{K}"):
             # Extract soft prompt
@@ -44,10 +44,10 @@ def generate_preference_dataset(dataset: List[Dict], translator_model: PeftModel
 
             z_G = translator_tokenizer.decode(greedy_ids[0], skip_special_tokens=True).strip()
 
-            if not z_G:
-                skipped_tasks.append(task["task_name"])
-                tqdm.write(f'Greedy decode produced empty translation! Skipping task: {task["task_name"]}')
-                continue
+            # if not z_G:
+            #     degenerate_tasks.append(task["task_name"])
+            #     tqdm.write(f'Greedy decode produced empty translation! Skipping task: {task["task_name"]}')
+            #     continue
 
             # Score the greedy translation
             score_G = get_scores([z_G], task["train_instances"]).item()
@@ -100,9 +100,8 @@ def generate_preference_dataset(dataset: List[Dict], translator_model: PeftModel
 
             # Degenerate: z_W and z_L are the same text → skip
             if z_W == z_L:
-                skipped_tasks.append(task["task_name"])
-                tqdm.write(f'All scores identical! Skipping task: {task["task_name"]}')
-                continue
+                degenerate_tasks.append(task["task_name"])
+                tqdm.write(f'z_W = z_L! Task: {task["task_name"]}')
 
             # Calculate log prob of producing z_W and z_L using the translator, conditioned on the soft prompt
             logp_ref_z_W = get_logprob_of_translation_given_soft_prompt(translator_model, translator_tokenizer, z_W, soft_prompt)
@@ -118,8 +117,8 @@ def generate_preference_dataset(dataset: List[Dict], translator_model: PeftModel
                 "logp_ref_z_L": logp_ref_z_L,
             })
 
-    if skipped_tasks:
-        print(f"Skipped {len(skipped_tasks)} task(s) due to degenerate preference pairs: {skipped_tasks}")
+    if degenerate_tasks:
+        print(f"Found {len(degenerate_tasks)} task(s) due to degenerate preference pairs: {degenerate_tasks}")
 
     return preference_dataset
 

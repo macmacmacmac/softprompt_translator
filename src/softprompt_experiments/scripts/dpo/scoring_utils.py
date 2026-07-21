@@ -301,7 +301,7 @@ def get_rougeL_scores(
 
     # Compute ROUGE-L between y and y_hat per translation, in original translation order
     rougeL_scores = [
-        ROUGE_METRIC.compute(predictions=y_hat[i], references=y)["rougeL"]
+        ROUGE_METRIC.compute(predictions=y_hat[i], references=y, stemmer=True)["rougeL"]
         for i in range(len(translations))
     ]
     return torch.tensor(rougeL_scores)
