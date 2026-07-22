@@ -95,8 +95,8 @@ def run(args_list=None):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
-    parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--epochs", type=int, default=1)
+    parser.add_argument("--lr", type=float, default=5e-6)
+    parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/dpo_preference_datasets/10xtranslator_LOGPROBscore_10n_1k_0.5temp")
     parser.add_argument("--mapper_weights_dir", type=str, default="./shared/mapper_lora_weights/General-DoD-10x/meta-llama/Llama-3.1-8B-Instruct")
@@ -187,6 +187,7 @@ def run(args_list=None):
     # │                 TRAINING LOOP                 │
     # └───────────────────────────────────────────────┘
     # Loop EPOCHS times
+    best_val_loss = 1000
     for epoch in range(EPOCHS):
 
         # Set the LoRA Model in Training Mode
@@ -244,7 +245,7 @@ def run(args_list=None):
         # └───────────────────────────────────────────────┘
         model.eval()
         total_val_loss = 0
-        
+
         # Freeze all weights
         with torch.no_grad():
             for batch in tqdm(val_dataloader, desc=f"Epoch {epoch+1}/{EPOCHS} [Val]"):                
@@ -275,6 +276,12 @@ def run(args_list=None):
                 ).mean()
 
                 total_val_loss += loss.item()
+        if total_val_loss < best_val_loss:
+            best_val_loss = total_val_loss    
+            model.save_pretrained(DPO_MAPPER_SAVE_PATH)
+            tokenizer.save_pretrained(DPO_MAPPER_SAVE_PATH)
+            print(f"New best val loss! PEFT LoRA weights saved to {DPO_MAPPER_SAVE_PATH}")
+
             
                 
         avg_val_loss = total_val_loss / len(val_dataloader)
@@ -287,6 +294,6 @@ def run(args_list=None):
     # │               SAVE LORA ADAPTERS              │
     # └───────────────────────────────────────────────┘
     os.makedirs(DPO_MAPPER_SAVE_PATH, exist_ok=True)
-    model.save_pretrained(DPO_MAPPER_SAVE_PATH)
-    tokenizer.save_pretrained(DPO_MAPPER_SAVE_PATH)
-    print(f"Mapper training complete! PEFT LoRA weights saved to {DPO_MAPPER_SAVE_PATH}")
+    # model.save_pretrained(DPO_MAPPER_SAVE_PATH)
+    # tokenizer.save_pretrained(DPO_MAPPER_SAVE_PATH)
+    print(f"Mapper training complete! Best val loss: {best_val_loss}. PEFT LoRA weights saved to {DPO_MAPPER_SAVE_PATH}")
