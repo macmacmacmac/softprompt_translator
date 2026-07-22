@@ -3,11 +3,10 @@ import argparse
 import os
 import time
 from transformers import AutoTokenizer
-from openai import OpenAI, RateLimitError
 import evaluate
 from dotenv import load_dotenv
 from tqdm import tqdm
-import ipdb 
+from vllm import LLM, SamplingParams
 
 from softprompt_experiments.scripts.comparisons import verbalizations_rougeL_visualizer
 
@@ -39,54 +38,6 @@ Based on this pattern, predict the output to this input.
 
 
 # -----------------------------
-# LLM call
-# -----------------------------
-api_key = os.getenv("OPENAI_API_KEY")
-if not api_key:
-    raise ValueError("API key not found. Please add `OPENAI_API_KEY` inside a .env file in project root")
-
-client = OpenAI(
-    api_key=api_key, 
-    max_retries=5,
-)
-
-def get_llm_prediction(
-    user_prompt: str, 
-    system_prompt: str,
-    max_retries: int = 5,
-    **kwargs
-):
-    defaults = {
-        "model": "gpt-4o-mini",
-    }
-    params = {**defaults, **kwargs}
-    for attempt in range(max_retries):
-        try:
-            response = client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0,
-                **params,
-            )
-
-            return response.choices[0].message.content.strip()
-
-        except RateLimitError as e:
-            if attempt == max_retries - 1:
-                raise
-
-            wait_time = 2 ** attempt
-            print(
-                f"Rate limited. Retrying in {wait_time}s "
-                f"(attempt {attempt + 1}/{max_retries})"
-            )
-            time.sleep(wait_time)
-
-    return ""
-
-# -----------------------------
 # Driver
 # -----------------------------
 def run(args_list=None):
@@ -96,9 +47,9 @@ def run(args_list=None):
     print("=" * 100)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", type=str, default="./shared/verbalizations/master_verbalizations_v3_fsr_8b.json")
-    parser.add_argument("--output", type=str, default="./shared/verbalizations/master_verbalizations_v3_fsr_8b_test.json")
-    parser.add_argument("--model", type=str, default="gpt-4o-mini")
+    parser.add_argument("--input", type=str, default="./shared/verbalizations/master_verbalizations_8b.json")
+    parser.add_argument("--output", type=str, default="./shared/verbalizations/master_verbalizations_8b_fsr_and_1x.json")
+    parser.add_argument("--model", type=str, default="meta-llama/Meta-Llama-3.1-8B-Instruct")
     parser.add_argument("--methods", nargs="+", default=["mapper", "inspect", "gt", "fs"], help="List of method prefixes to evaluate (e.g. mapper inspect gt fs mapper10x)")
 
     args, _ = parser.parse_known_args(args_list)
@@ -106,12 +57,10 @@ def run(args_list=None):
     MODEL = args.model
     methods = args.methods
 
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("API key not found.")
-
-    global client
-    client = OpenAI(api_key=api_key)
+    print(f"Loading vLLM model: {MODEL}...")
+    llm = LLM(model=MODEL)
+    sampling_params = SamplingParams(temperature=0.0, max_tokens=1024)
+    tokenizer = llm.get_tokenizer()
 
     print(f"Loading data from {args.input}...")
     with open(args.input, "r") as f:
@@ -138,17 +87,33 @@ def run(args_list=None):
         method_preds = {m: [] for m in methods if prompts[m] is not None}
         refs = []
 
-        for instance in instances:
+        flat_queries = []
+        metadata = []
+
+        for i, instance in enumerate(instances):
             input_text = instance["input"]
             gt_output = instance["output"]
+            refs.append(gt_output)
 
             for m in list(method_preds.keys()):
                 usr_prompt = USR_PROMPT.format(task_prompt=prompts[m], input=input_text)
-                pred = get_llm_prediction(user_prompt=usr_prompt, system_prompt=SYSTEM_PROMPT, model=MODEL)
-                instance[f"{m}_output"] = pred
-                method_preds[m].append(pred)
+                
+                messages = [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": usr_prompt},
+                ]
+                
+                prompt_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                flat_queries.append(prompt_text)
+                metadata.append((i, m))
 
-            refs.append(gt_output)
+        if flat_queries:
+            outputs = llm.generate(flat_queries, sampling_params, use_tqdm=False)
+            
+            for out, (i, m) in zip(outputs, metadata):
+                pred = out.outputs[0].text.strip()
+                instances[i][f"{m}_output"] = pred
+                method_preds[m].append(pred)
 
         # compute ROUGE-L over dataset for each method
         for m, preds in method_preds.items():
