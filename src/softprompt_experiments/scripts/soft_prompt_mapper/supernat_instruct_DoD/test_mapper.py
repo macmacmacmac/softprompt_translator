@@ -20,6 +20,13 @@ def run(args_list=None):
         "="*100,"\n"
     )
 
+    if torch.cuda.is_available():
+            print(f"Total GPUs: {torch.cuda.device_count()}")
+            for i in range(torch.cuda.device_count()):
+                print(f"GPU {i}: {torch.cuda.get_device_name(i)}")
+    else:
+        print("No CUDA GPU available.")
+
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
@@ -170,24 +177,29 @@ def run(args_list=None):
                     "mapper_hard_prompt": pred_texts[j],
                     "mapper_hard_prompt_rougeL": rouge_l_scores[j],
                     "mapper_hard_prompt_cos_sim": cosine_scores[j],
-                    "train_instances": train_instances_list[j],
+                    "train_instances": train_instances_list[j][:5],
                     "val_instances": val_instances_list[j]
                 })
 
     # Merge results into master verbaliztions
     # Uncomment as per need
-    with open(MASTER_VERBALIZATIONS_PATH, "r") as f:
-        master_verbalizations = json.load(f)
-        assert len(master_verbalizations) == len(results_data)
+    # with open(MASTER_VERBALIZATIONS_PATH, "r") as f:
+    #     master_verbalizations = json.load(f)
+    #     assert len(master_verbalizations) == len(results_data)
 
-    for m, r in zip(master_verbalizations, results_data):
-        assert m["task_name"] == r["task_name"]
-        m["mapper70b_hard_prompt"] = r["mapper_hard_prompt"]
-        m["mapper70b_hard_prompt_rougeL"] = r["mapper_hard_prompt_rougeL"]
-        m["mapper70b_hard_prompt_cos_sim"] = r["mapper_hard_prompt_cos_sim"]
+    # for m, r in zip(master_verbalizations, results_data):
+    #     assert m["task_name"] == r["task_name"]
+    #     m["mapper70b_hard_prompt"] = r["mapper_hard_prompt"]
+    #     m["mapper70b_hard_prompt_rougeL"] = r["mapper_hard_prompt_rougeL"]
+    #     m["mapper70b_hard_prompt_cos_sim"] = r["mapper_hard_prompt_cos_sim"]
 
 
     # Save to JSON
-    with open("./shared/verbalizations/test.json", "w") as f:
-        json.dump(master_verbalizations, f, indent=4)
+    # with open("./shared/verbalizations/test.json", "w") as f:
+    #     json.dump(master_verbalizations, f, indent=4)
+    # print("Done!\n")
+
+
+    with open("./shared/verbalizations/70b_results.json", "w") as f:
+        json.dump(results_data, f, indent=4)
     print("Done!\n")

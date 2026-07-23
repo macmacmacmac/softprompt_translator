@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) or Antigravity CLI w
 
 ## Workflow
 
-[CLAUDE only] When implementing plan changes (or any adhoc code changes), always switch to accept-edits mode and delegate the implementation to a Sonnet 5 Agent.
+[CLAUDE CODE only] When implementing plan changes (or any adhoc code changes), always delegate the implementation to a Sonnet 5 Agent.
 
 Scripts that require GPU access should not be runtime-verified by Claude / AGY CLI — the user tests them on the WPI SLURM cluster. A `python -m py_compile` syntax check is sufficient verification.
 
