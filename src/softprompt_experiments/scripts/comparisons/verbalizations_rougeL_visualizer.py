@@ -28,28 +28,24 @@ def build_visual(output_path):
     # col_name0 = 'fs_task_rougeL'
     col_names = [
         'soft_task_rougeL',
-        'fs_task_rougeL',
         'gt_task_rougeL',
-        'fsr_task_rougeL',
-        # 'mapper10x_logprob_z_W_n20_task_rougeL',
-        # 'mapper10x_logprob_z_W_z_G_task_rougeL',
-        'dpo_10x_round1_task_rougeL',
         'mapper10x_logprob_z_W_task_rougeL',
         'mapper10x_task_rougeL',
+        'fsr_task_rougeL',
         'mapper_task_rougeL',
+        'fs_task_rougeL',
+        # 'dpo10xround1_task_rougeL',
         'inspect_task_rougeL'
     ]
     label_names = [
         'Softprompt',
-        'FS',
         'Groundtruth',
-        'FS \nw/ Prompt ',
-        # 'Tr 10x \nn=20 z_W logprob',
-        # 'Translator 10x \nz_G logprob',
-        'Translator 10x \nDPO',
-        'Translator 10x \nz_W logprob',
+        'Translator 10x \nOptimized',
         'Translator 10x',
+        'FS \nw/ Prompt ',
         'Translator 1x',
+        'FS',
+        # 'DPO 10x round1',
         'InSPEcT'
     ]
 
@@ -116,7 +112,7 @@ def run(args_list=None):
     print("=" * 100)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", type=str, default="./shared/verbalizations/master_verbalizations_v3")
+    parser.add_argument("--output", type=str, default="./shared/verbalizations/master_verbalizations_8b")
     args, _ = parser.parse_known_args(args_list)
 
     build_visual(output_path=args.output)

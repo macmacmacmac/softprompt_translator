@@ -2,7 +2,7 @@ import os
 import argparse
 import torch
 from torch.utils.data import Dataset, DataLoader
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import LoraConfig, get_peft_model, TaskType
 from tqdm import tqdm
 import evaluate
@@ -35,12 +35,15 @@ class MapperCollator:
         # Stack the frozen soft prompts into a batch: (batch_size, soft_prompt_len, embed_dim)
         soft_prompts = torch.stack(soft_prompts)        # (batch_size, soft_prompt_len, embed_dim)
 
+        # Keep original hard_prompts for evaluation
+        raw_hard_prompts = list(hard_prompts)
+
         # Explicitly append the EOS token so the model learns when to stop
-        hard_prompts = [prompt + self.tokenizer.eos_token for prompt in hard_prompts]
+        hard_prompts_with_eos = [prompt + self.tokenizer.eos_token for prompt in hard_prompts]
     
         # Tokenize the target hard prompts
         tokenized = self.tokenizer(
-            hard_prompts, 
+            hard_prompts_with_eos, 
             padding=True, 
             truncation=True, 
             max_length=300, # TODO: Test this value
@@ -65,7 +68,8 @@ class MapperCollator:
             "soft_prompts": soft_prompts,
             "input_ids": input_ids,
             "attention_mask": attention_mask,
-            "labels": labels
+            "labels": labels,
+            "hard_prompts": raw_hard_prompts
         }
 
 
@@ -78,18 +82,29 @@ def run(args_list=None):
         "="*100,"\n"
     )
 
+    if torch.cuda.is_available():
+        print(f"Total GPUs: {torch.cuda.device_count()}")
+        for i in range(torch.cuda.device_count()):
+            print(f"GPU {i}: {torch.cuda.get_device_name(i)}")
+    else:
+        print("No CUDA GPU available.")
+
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=1e-6)
+    parser.add_argument("--proj_lr", type=float, default=1e-3, help="Learning rate for the soft prompt projection layer")
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--num_tokens", type=int, default=20)
-    parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD-10x")
-    parser.add_argument("--lora_save_dir", type=str, default="./shared/mapper_lora_weights")
+    parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD")
+    parser.add_argument("--lora_save_dir", type=str, default="./shared/mapper_lora_weights_test")
     parser.add_argument("--lora_rank", type=int, default=4)
     parser.add_argument("--lora_dropout", type=float, default=0.1)
     parser.add_argument("--optim_weight_decay", type=float, default=0.1) 
+    parser.add_argument("--load_in_8bit", action="store_true", help="Load base model in 8-bit")
+    parser.add_argument("--load_in_4bit", action="store_true", help="Load base model in 4-bit NF4 (QLoRA)")
+    parser.add_argument("--save_at_end", action="store_true", help="Save trained model only at the end of training")
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables
@@ -98,6 +113,7 @@ def run(args_list=None):
     DATASET_NAME = MAPPER_DATASET_PATH.split('/')[-1]
     LORA_SAVE_DIR = os.path.join(args.lora_save_dir, DATASET_NAME, MODEL_NAME)
     LR = args.lr
+    PROJ_LR = args.proj_lr
     EPOCHS = args.epochs
     BATCH_SIZE = args.batch_size
     NUM_TOKENS = args.num_tokens
@@ -110,6 +126,8 @@ def run(args_list=None):
     # DEVICE = "cpu"
     DTYPE = torch.bfloat16 if DEVICE == "cuda" else torch.float32
 
+    print(f"Using DEVICE: {DEVICE}")
+
     # Load Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     tokenizer.pad_token = tokenizer.eos_token       # Llama doesn't have a default pad token, so we map it to EOS
@@ -121,7 +139,21 @@ def run(args_list=None):
     # │                 LORA MODEL PREP               │
     # └───────────────────────────────────────────────┘
     print(f"Loading base model {MODEL_NAME}...")
-    base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
+    load_kwargs = {"device_map": "auto"}
+
+    if args.load_in_8bit:
+        load_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
+    elif args.load_in_4bit:
+        load_kwargs["quantization_config"] = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=DTYPE,
+            bnb_4bit_use_double_quant=True,
+        )
+    else:
+        load_kwargs["dtype"] = DTYPE
+
+    base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, **load_kwargs)
     base_model.gradient_checkpointing_enable()
 
     # Configure LoRA Config to target the key linear layers of attention and feed-forward networks
@@ -143,11 +175,6 @@ def run(args_list=None):
     # Get the Llama Model's Word Embedding Mappings
     llama_word_embeddings = model.get_base_model().get_input_embeddings()
 
-    # Init Optimizer
-    optimizer = torch.optim.AdamW(model.parameters(), 
-                                  lr = LR, 
-                                  weight_decay = OPTIM_WEIGHT_DECAY)
-
 
     # ┌───────────────────────────────────────────────┐
     # │                   DATASET PREP                │
@@ -157,6 +184,32 @@ def run(args_list=None):
     val_dataset = torch.load(os.path.join(MAPPER_DATASET_PATH, 'val_mapper_dataset.pt'), map_location="cpu", weights_only=True)
     
     print(f"Train Dataset size: {len(train_dataset)} | Validation Dataset size: {len(val_dataset)}")
+
+    # Check for embedding dimension mismatch (e.g., 8B soft prompts → 70B model)
+    MODEL_EMBED_DIM = base_model.config.hidden_size
+    SOFT_PROMPT_DIM = train_dataset[0]["soft_prompt"].shape[-1]
+
+    if SOFT_PROMPT_DIM != MODEL_EMBED_DIM:
+        print(f"Soft prompt dim ({SOFT_PROMPT_DIM}) != model dim ({MODEL_EMBED_DIM}). "
+              f"Adding learned projection layer.")
+        soft_prompt_projection = torch.nn.Linear(
+            SOFT_PROMPT_DIM, MODEL_EMBED_DIM, bias=False
+        ).to(dtype=DTYPE, device=base_model.device)
+    else:
+        soft_prompt_projection = None
+
+    # Init Optimizer (includes projection params if needed)
+    if soft_prompt_projection is not None:
+        params_to_optimize = [
+            {"params": model.parameters(), "lr": LR},
+            {"params": soft_prompt_projection.parameters(), "lr": PROJ_LR}
+        ]
+    else:
+        params_to_optimize = [
+            {"params": model.parameters(), "lr": LR}
+        ]
+    optimizer = torch.optim.AdamW(params_to_optimize,
+                                  weight_decay=OPTIM_WEIGHT_DECAY)
 
     # Init Collator
     collator = MapperCollator(
@@ -184,14 +237,15 @@ def run(args_list=None):
     # ┌───────────────────────────────────────────────┐
     # │                 TRAINING LOOP                 │
     # └───────────────────────────────────────────────┘
+    best_val_rouge_l = -1.0
+    best_epoch = -1
+
     # Loop EPOCHS times
     for epoch in range(EPOCHS):
 
-        # Set the LoRA Model in Training Mode
         model.train()
 
         total_train_loss = 0
-        total_train_rouge_l = 0
         
         # Init Progress Bar
         dataset_pbar = tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{EPOCHS} [Train]")
@@ -202,6 +256,8 @@ def run(args_list=None):
             
             # Move inputs to GPU
             soft_prompts = batch["soft_prompts"].to(DEVICE, dtype=DTYPE)                # (batch_size, soft_prompt_len, embed_dim)
+            if soft_prompt_projection is not None:
+                soft_prompts = soft_prompt_projection(soft_prompts)                     # (batch_size, soft_prompt_len, MODEL_EMBED_DIM)
             input_ids = batch["input_ids"].to(DEVICE)                                   # (batch_size, seq_len)
             attention_mask = batch["attention_mask"].to(DEVICE)                         # (batch_size, seq_len)
             labels = batch["labels"].to(DEVICE)                                         # (batch_size, seq_len)
@@ -235,48 +291,6 @@ def run(args_list=None):
             loss.backward()
             optimizer.step()
 
-            # TEACHER FORCING
-            # Extract the logits
-            logits = outputs.logits
-
-            # Shift logits and labels so token i predicts i + 1
-            shifted_logits = logits[..., :-1, :].contiguous()
-            shifted_labels = full_labels[..., 1:].contiguous()
-
-            # Get the predicted token ids
-            preds = torch.argmax(shifted_logits, dim = -1)
-
-            # Positions with label -100 (soft prompt + padding) carry no supervision;
-            # mask the preds there too, else junk tokens leak into the decoded strings
-            valid_positions = shifted_labels != -100
-            preds = torch.where(
-                valid_positions, 
-                preds, 
-                tokenizer.pad_token_id
-            )
-
-            # Replace -100 in the labels as we can't decode -100
-            shifted_labels = torch.where(
-                valid_positions,
-                shifted_labels,
-                tokenizer.pad_token_id
-            )
-
-            # Decode preds and labels into strings
-            # skip_special_tokens=True removes EOS and Padding tokens from the text
-            decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
-            decoded_labels = tokenizer.batch_decode(shifted_labels, skip_special_tokens=True)
-
-            # Calculate ROUGE-L for the current batch
-            rouge_results = ROUGE_METRIC.compute(
-                predictions=decoded_preds, 
-                references=decoded_labels, 
-                use_stemmer=True
-            )
-            
-            # Accumulate metrics (initialize `total_train_rouge_l = 0` before the epoch instead of tokens)
-            current_rouge_l = rouge_results['rougeL']
-            total_train_rouge_l += current_rouge_l
             total_train_loss += loss.item()
             
             # Update progress bar
@@ -284,7 +298,6 @@ def run(args_list=None):
 
             
         avg_train_loss = total_train_loss / len(train_dataloader)
-        avg_train_rouge_l = total_train_rouge_l / len(train_dataloader)
         
         # ┌───────────────────────────────────────────────┐
         # │                 VALIDATION LOOP               │
@@ -299,6 +312,8 @@ def run(args_list=None):
 
                 # Move inputs to DEVICE
                 soft_prompts = batch["soft_prompts"].to(DEVICE, dtype=DTYPE)            # (batch_size, soft_prompt_len, embed_dim)
+                if soft_prompt_projection is not None:
+                    soft_prompts = soft_prompt_projection(soft_prompts)                 # (batch_size, soft_prompt_len, MODEL_EMBED_DIM)
                 input_ids = batch["input_ids"].to(DEVICE)                               # (batch_size, seq_len)
                 attention_mask = batch["attention_mask"].to(DEVICE)                     # (batch_size, seq_len)
                 labels = batch["labels"].to(DEVICE)                                     # (batch_size, seq_len)
@@ -327,43 +342,28 @@ def run(args_list=None):
                 # Accumulate validation loss
                 total_val_loss += outputs.loss.item()
 
-                # Calculate Validation Accuracy
-                logits = outputs.logits
-                shifted_logits = logits[..., :-1, :].contiguous()
-                shifted_labels = full_labels[..., 1:].contiguous()
-
-                # Get the predicted token ids
-                preds = torch.argmax(shifted_logits, dim = -1)
-
-                # Positions with label -100 (soft prompt + padding) carry no supervision;
-                # mask the preds there too, else junk tokens leak into the decoded strings
-                valid_positions = shifted_labels != -100
-                preds = torch.where(
-                    valid_positions, 
-                    preds, 
-                    tokenizer.pad_token_id
+                # Generate predictions autoregressively for accurate validation metrics
+                gen_attention_mask = torch.ones(soft_prompts.shape[:2], dtype=torch.long, device=DEVICE)
+                
+                gen_outputs = model.generate(
+                    inputs_embeds=soft_prompts,
+                    attention_mask=gen_attention_mask,
+                    max_new_tokens=300,
+                    do_sample=False,
+                    pad_token_id=tokenizer.eos_token_id
                 )
-
-                # Replace -100 in the labels as we can't decode -100
-                shifted_labels = torch.where(
-                    valid_positions,
-                    shifted_labels,
-                    tokenizer.pad_token_id
-                )
-
-                # Decode preds and labels into strings
-                # skip_special_tokens=True removes EOS and Padding tokens from the text
-                decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
-                decoded_labels = tokenizer.batch_decode(shifted_labels, skip_special_tokens=True)
+                
+                decoded_preds = tokenizer.batch_decode(gen_outputs, skip_special_tokens=True)
+                decoded_preds = [text.strip() for text in decoded_preds]
 
                 # Calculate ROUGE-L for the current batch
                 rouge_results = ROUGE_METRIC.compute(
                     predictions=decoded_preds, 
-                    references=decoded_labels, 
+                    references=batch["hard_prompts"], 
                     use_stemmer=True
                 )
                 
-                # Accumulate metrics (initialize `total_train_rouge_l = 0` before the epoch instead of tokens)
+                # Accumulate metrics
                 current_rouge_l = rouge_results['rougeL']
                 total_val_rouge_l += current_rouge_l
                 
@@ -371,13 +371,35 @@ def run(args_list=None):
         avg_val_rouge_l = total_val_rouge_l / len(val_dataloader)
 
         tqdm.write(f"\nEpoch {epoch + 1} Summary:")
-        tqdm.write(f"Train -> Loss: {avg_train_loss: .4f} | ROUGE-L: {avg_train_rouge_l: .2f}")
-        tqdm.write(f"Val   -> Loss: {avg_val_loss: .4f} | ROUGE-L: {avg_val_rouge_l: .2f}\n")
+        tqdm.write(f"Train -> Loss: {avg_train_loss: .4f}")
+        tqdm.write(f"Val   -> Loss: {avg_val_loss: .4f} | ROUGE-L: {avg_val_rouge_l: .4f}\n")
+
+        # Save model weights if current epoch achieved the best validation ROUGE-L
+        if (not args.save_at_end) and (avg_val_rouge_l > best_val_rouge_l):
+            best_val_rouge_l = avg_val_rouge_l
+            best_epoch = epoch + 1
+            os.makedirs(LORA_SAVE_DIR, exist_ok=True)
+            model.save_pretrained(LORA_SAVE_DIR)
+            tokenizer.save_pretrained(LORA_SAVE_DIR)
+            if soft_prompt_projection is not None:
+                torch.save(soft_prompt_projection.state_dict(),
+                           os.path.join(LORA_SAVE_DIR, "soft_prompt_projection.pt"))
+            tqdm.write(f"--> Saved new best model weights (Epoch {best_epoch}, Val ROUGE-L: {best_val_rouge_l:.4f}) to {LORA_SAVE_DIR}\n")
+
+    if args.save_at_end:
+        os.makedirs(LORA_SAVE_DIR, exist_ok=True)
+        model.save_pretrained(LORA_SAVE_DIR)
+        tokenizer.save_pretrained(LORA_SAVE_DIR)
+        if soft_prompt_projection is not None:
+            torch.save(soft_prompt_projection.state_dict(),
+                        os.path.join(LORA_SAVE_DIR, "soft_prompt_projection.pt"))
+        print(f"Mapper training complete! LoRA weights saved to {LORA_SAVE_DIR}")
 
     # ┌───────────────────────────────────────────────┐
-    # │               SAVE LORA ADAPTERS              │
+    # │               SAVE SUMMARY LOG                │
     # └───────────────────────────────────────────────┘
-    os.makedirs(LORA_SAVE_DIR, exist_ok=True)
-    model.save_pretrained(LORA_SAVE_DIR)
-    tokenizer.save_pretrained(LORA_SAVE_DIR)
-    print(f"Mapper training complete! PEFT LoRA weights saved to {LORA_SAVE_DIR}")
+    if not args.save_at_end:
+        if best_epoch != -1:
+            print(f"Mapper training complete! Best PEFT LoRA weights (Epoch {best_epoch}, Val ROUGE-L: {best_val_rouge_l:.4f}) saved to {LORA_SAVE_DIR}")
+        else:
+            print(f"Mapper training complete! No weights saved to {LORA_SAVE_DIR}")

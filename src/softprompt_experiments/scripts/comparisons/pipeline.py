@@ -95,6 +95,7 @@ def run(args_list=None):
     print("=" * 100)
 
     parser = argparse.ArgumentParser()
+<<<<<<< HEAD
     parser.add_argument("--input", type=str, default="./shared/verbalizations/master_verbalizations_v3.json")
     parser.add_argument("--output", type=str, default="./shared/verbalizations/test.json")
     parser.add_argument("--model", type=str, default="gpt-4o-mini")
@@ -118,7 +119,17 @@ def run(args_list=None):
     do_inspect = args.do_inspect
     do_mapper10x = args.do_mapper10x
 
+=======
+    parser.add_argument("--input", type=str, default="./shared/verbalizations/70b_results.json")
+    parser.add_argument("--output", type=str, default="./shared/verbalizations/70b_results.json")
+    parser.add_argument("--model", type=str, default="gpt-4o-mini")
+    parser.add_argument("--methods", nargs="+", default=["mapper", "inspect", "gt", "fs"], help="List of method prefixes to evaluate (e.g. mapper inspect gt fs mapper10x)")
+
+    args, _ = parser.parse_known_args(args_list)
+
+>>>>>>> main
     MODEL = args.model
+    methods = args.methods
 
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -132,6 +143,7 @@ def run(args_list=None):
         data = json.load(f)
 
     for dataset in tqdm(data):
+<<<<<<< HEAD
         # ipdb.set_trace()
         val_instances = dataset["val_instances"]
         train_instances = dataset["train_instances"]
@@ -154,9 +166,29 @@ def run(args_list=None):
         fs_preds = []
         gt_preds = []
         
+=======
+        instances = dataset["val_instances"]
+        train_instances = dataset.get("train_instances", [])
 
+        # Build prompt string for each method
+        prompts = {}
+        for m in methods:
+            if m.lower() in ("fs", "fewshot"):
+                fs_examples = "\n".join([f"Input: {t['input']}\nOutput: {t['output']}\n" for t in train_instances])
+                prompts[m] = FS_TASK_PROMPT.format(examples=fs_examples)
+            elif f"{m}_hard_prompt" in dataset:
+                prompts[m] = str(dataset[f"{m}_hard_prompt"])
+            elif m == "gt" and "hard_prompt" in dataset:
+                prompts[m] = str(dataset["hard_prompt"])
+            else:
+                print(f"Warning: Prompt for method '{m}' not found in dataset. Skipping '{m}'.")
+                prompts[m] = None
+>>>>>>> main
+
+        method_preds = {m: [] for m in methods if prompts[m] is not None}
         refs = []
 
+<<<<<<< HEAD
         # TODO: refact to use vLLM for inference instead with local LLM for these calls
         # we'll use llama 3.1 8b Instruct
         # ideally also make use of batching 
@@ -207,18 +239,30 @@ def run(args_list=None):
                 gt_pred = get_llm_prediction(SYSTEM_PROMPT, gt_usr_prompt, model=MODEL)
                 instance["gt_output"] = gt_pred
                 gt_preds.append(gt_pred)
+=======
+        for instance in instances:
+            input_text = instance["input"]
+            gt_output = instance["output"]
+
+            for m in list(method_preds.keys()):
+                usr_prompt = USR_PROMPT.format(task_prompt=prompts[m], input=input_text)
+                pred = get_llm_prediction(user_prompt=usr_prompt, system_prompt=SYSTEM_PROMPT, model=MODEL)
+                instance[f"{m}_output"] = pred
+                method_preds[m].append(pred)
+>>>>>>> main
 
 
             refs.append(gt_output)
 
-        # compute ROUGE-L over dataset
-        if do_mapper or do_all:
-            dataset["mapper_task_rougeL"] = ROUGE_METRIC.compute(
-                predictions=mapper_preds,
+        # compute ROUGE-L over dataset for each method
+        for m, preds in method_preds.items():
+            dataset[f"{m}_task_rougeL"] = ROUGE_METRIC.compute(
+                predictions=preds,
                 references=refs,
                 use_stemmer=True
             )["rougeL"]
 
+<<<<<<< HEAD
         if do_mapper10x or do_all:
             dataset["mapper10x_task_rougeL"] = ROUGE_METRIC.compute(
                 predictions=mapper10x_preds,
@@ -258,11 +302,8 @@ def run(args_list=None):
     
         # break
 
+=======
+>>>>>>> main
         tqdm.write(f"Saving results to {args.output}...")
         with open(args.output, "w") as f:
             json.dump(data, f, indent=4)
-
-
-    verbalizations_rougeL_visualizer.run(args_list)
-
-
