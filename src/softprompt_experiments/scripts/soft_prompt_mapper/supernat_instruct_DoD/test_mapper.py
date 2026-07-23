@@ -4,12 +4,12 @@ import random
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
-import pandas as pd
 from tqdm import tqdm
 import evaluate
 import json
 from sentence_transformers import SentenceTransformer
 from sentence_transformers.util import cos_sim
+import ipdb
 
 # Driver Code
 def run(args_list=None):
@@ -23,10 +23,10 @@ def run(args_list=None):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
-    parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD-10x")
-    parser.add_argument("--master_verbalizations_path", type=str, default="./shared/verbalizations/updated_master_verbalizations_v3.json")
+    parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD")
+    parser.add_argument("--master_verbalizations_path", type=str, default="./shared/verbalizations/master_verbalizations_v3.json")
     parser.add_argument("--sample", action='store_true', help="Use a sample of val dataset instead of the full val dataset")
-    parser.add_argument("--lora_dir", type=str, default="./shared/mapper_lora_weights/General-DoD-10x")
+    parser.add_argument("--lora_dir", type=str, default="./shared/mapper_lora_weights/General-DoD")
     parser.add_argument("--num_samples", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_tokens", type=int, default=20)
@@ -83,11 +83,25 @@ def run(args_list=None):
     tokenizer.pad_token = tokenizer.eos_token
 
     print(f"Loading base model {MODEL_NAME}...")
-    base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
+    base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map="auto")
 
     print(f"Loading LoRA adapters from {LORA_DIR}...")
     model = PeftModel.from_pretrained(base_model, LORA_DIR)
     model.eval()
+
+    # Load soft prompt projection layer if saved alongside LoRA weights
+    projection_path = os.path.join(LORA_DIR, "soft_prompt_projection.pt")
+    if os.path.exists(projection_path):
+        SP_DIM = test_samples[0]["soft_prompt"].shape[-1]
+        MODEL_DIM = base_model.config.hidden_size
+        soft_prompt_projection = torch.nn.Linear(SP_DIM, MODEL_DIM, bias=False)
+        soft_prompt_projection.load_state_dict(
+            torch.load(projection_path, map_location=base_model.device, weights_only=True)
+        )
+        soft_prompt_projection.to(dtype=DTYPE, device=base_model.device).eval()
+        print(f"Loaded soft prompt projection ({SP_DIM} \u2192 {MODEL_DIM})")
+    else:
+        soft_prompt_projection = None
 
     # ┌───────────────────────────────────────────────┐
     # │                 INFERENCE LOOP                │
@@ -110,6 +124,8 @@ def run(args_list=None):
             
             # Stack soft prompts: (batch_size, seq_len, embed_dim)
             soft_prompts = torch.stack([s["soft_prompt"] for s in batch_samples]).to(DEVICE, dtype=DTYPE)
+            if soft_prompt_projection is not None:
+                soft_prompts = soft_prompt_projection(soft_prompts)
             
             # Create an attention mask for the batch: (batch_size, seq_len)
             attention_mask = torch.ones(soft_prompts.shape[:2], dtype=torch.long, device=DEVICE)
@@ -166,9 +182,9 @@ def run(args_list=None):
 
     for m, r in zip(master_verbalizations, results_data):
         assert m["task_name"] == r["task_name"]
-        m["mapper10x_hard_prompt"] = r["mapper_hard_prompt"]
-        m["mapper10x_hard_prompt_rougeL"] = r["mapper_hard_prompt_rougeL"]
-        m["mapper10x_hard_prompt_cos_sim"] = r["mapper_hard_prompt_cos_sim"]
+        m["mapper70b_hard_prompt"] = r["mapper_hard_prompt"]
+        m["mapper70b_hard_prompt_rougeL"] = r["mapper_hard_prompt_rougeL"]
+        m["mapper70b_hard_prompt_cos_sim"] = r["mapper_hard_prompt_cos_sim"]
 
 
     # Save to JSON

@@ -15,6 +15,7 @@
 !requirements.txt
 !.gitignore
 !run_job.sh
+!run_job_70b.sh
 
 # Ignore all Python cache files everywhere
 __pycache__/
@@ -38,3 +39,8 @@ visualizations/
 
 
 !verbalizations/*.json
+
+
+# Allow CLAUDE.md and AGENTS.md
+!CLAUDE.md
+!AGENTS.md

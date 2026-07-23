@@ -96,24 +96,12 @@ def run(args_list=None):
     parser.add_argument("--input", type=str, default="./shared/verbalizations/master_verbalizations_v3.json")
     parser.add_argument("--output", type=str, default="./shared/verbalizations/test.json")
     parser.add_argument("--model", type=str, default="gpt-4o-mini")
-
-    parser.add_argument("--do_all", action="store_true")
-    parser.add_argument("--do_fs", action="store_true")
-    parser.add_argument("--do_mapper", action="store_true")
-    parser.add_argument("--do_gt", action="store_true")
-    parser.add_argument("--do_inspect", action="store_true")
-    parser.add_argument("--do_mapper10x", action="store_true")
+    parser.add_argument("--methods", nargs="+", default=["mapper", "inspect", "gt", "fs"], help="List of method prefixes to evaluate (e.g. mapper inspect gt fs mapper10x)")
 
     args, _ = parser.parse_known_args(args_list)
 
-    do_all = args.do_all
-    do_fs = args.do_fs
-    do_mapper = args.do_mapper
-    do_gt = args.do_gt
-    do_inspect = args.do_inspect
-    do_mapper10x = args.do_mapper10x
-
     MODEL = args.model
+    methods = args.methods
 
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -127,113 +115,48 @@ def run(args_list=None):
         data = json.load(f)
 
     for dataset in tqdm(data):
-        # ipdb.set_trace()
-        val_instances = dataset["val_instances"]
-        train_instances = dataset["train_instances"]
+        instances = dataset["val_instances"]
+        train_instances = dataset.get("train_instances", [])
 
-        mapper_prompt = str(dataset["mapper_hard_prompt"])
-        mapper10x_prompt = str(dataset["mapper10x_logprob_z_W_z_G"])
-        inspect_prompt = str(dataset["inspect_hard_prompt"])
+        # Build prompt string for each method
+        prompts = {}
+        for m in methods:
+            if m.lower() in ("fs", "fewshot"):
+                fs_examples = "\n".join([f"Input: {t['input']}\nOutput: {t['output']}\n" for t in train_instances])
+                prompts[m] = FS_TASK_PROMPT.format(examples=fs_examples)
+            elif f"{m}_hard_prompt" in dataset:
+                prompts[m] = str(dataset[f"{m}_hard_prompt"])
+            elif m == "gt" and "hard_prompt" in dataset:
+                prompts[m] = str(dataset["hard_prompt"])
+            else:
+                print(f"Warning: Prompt for method '{m}' not found in dataset. Skipping '{m}'.")
+                prompts[m] = None
 
-        fs_examples = "\n".join([f"Input: {t['input']}\nOutput: {t['output']}\n" for t in train_instances])
-        fs_prompt = FS_TASK_PROMPT.format(examples=fs_examples)
-
-        gt_prompt = str(dataset["hard_prompt"])
-
-        
-
-        mapper_preds = []
-        mapper10x_preds = []
-        inspect_preds = []
-        fs_preds = []
-        gt_preds = []
-        
-
+        method_preds = {m: [] for m in methods if prompts[m] is not None}
         refs = []
 
-        for instance in val_instances:
-            input = instance["input"]
+
+        for instance in instances:
+            input_text = instance["input"]
             gt_output = instance["output"]
 
-            mapper_usr_prompt = USR_PROMPT.format(task_prompt = mapper_prompt, input = input)
-            mapper10x_usr_prompt = USR_PROMPT.format(task_prompt = mapper10x_prompt, input = input)
-            inspect_usr_prompt = USR_PROMPT.format(task_prompt = inspect_prompt, input = input)
-            fs_usr_prompt = USR_PROMPT.format(task_prompt = fs_prompt, input = input)
-            gt_usr_prompt = USR_PROMPT.format(task_prompt = gt_prompt, input = input)
-            
-
-            
-
-            if do_mapper or do_all:
-                mapper_pred = get_llm_prediction(SYSTEM_PROMPT, mapper_usr_prompt, model=MODEL)
-                instance["mapper_output"] = mapper_pred
-                mapper_preds.append(mapper_pred)
-
-            if do_mapper10x or do_all:
-                mapper10x_pred = get_llm_prediction(SYSTEM_PROMPT, mapper10x_usr_prompt, model=MODEL)
-                instance["mapper10x_logprob_z_W_z_G_output"] = mapper10x_pred
-                mapper10x_preds.append(mapper10x_pred)
-
-            if do_inspect or do_all:
-                inspect_pred = get_llm_prediction(SYSTEM_PROMPT, inspect_usr_prompt, model=MODEL)
-                instance["inspect_output"] = inspect_pred
-                inspect_preds.append(inspect_pred)
-
-            if do_fs or do_all:
-                fs_pred = get_llm_prediction(SYSTEM_PROMPT, fs_usr_prompt, model=MODEL)
-                instance["fs_output"] = fs_pred
-                fs_preds.append(fs_pred)
-
-            if do_gt or do_all:
-                gt_pred = get_llm_prediction(SYSTEM_PROMPT, gt_usr_prompt, model=MODEL)
-                instance["gt_output"] = gt_pred
-                gt_preds.append(gt_pred)
+            for m in list(method_preds.keys()):
+                usr_prompt = USR_PROMPT.format(task_prompt=prompts[m], input=input_text)
+                pred = get_llm_prediction(user_prompt=usr_prompt, system_prompt=SYSTEM_PROMPT, model=MODEL)
+                instance[f"{m}_output"] = pred
+                method_preds[m].append(pred)
 
 
             refs.append(gt_output)
 
-        # compute ROUGE-L over dataset
-        if do_mapper or do_all:
-            dataset["mapper_task_rougeL"] = ROUGE_METRIC.compute(
-                predictions=mapper_preds,
+        # compute ROUGE-L over dataset for each method
+        for m, preds in method_preds.items():
+            dataset[f"{m}_task_rougeL"] = ROUGE_METRIC.compute(
+                predictions=preds,
                 references=refs,
                 use_stemmer=True
             )["rougeL"]
 
-        if do_mapper10x or do_all:
-            dataset["mapper10x_logprob_z_W_z_G_task_rougeL"] = ROUGE_METRIC.compute(
-                predictions=mapper10x_preds,
-                references=refs,
-                use_stemmer=True
-            )["rougeL"]
-
-        if do_inspect or do_all:
-            dataset["inspect_task_rougeL"] = ROUGE_METRIC.compute(
-                predictions=inspect_preds,
-                references=refs,
-                use_stemmer=True
-            )["rougeL"]
-
-        if do_fs or do_all:
-            dataset["fs_task_rougeL"] = ROUGE_METRIC.compute(
-                predictions=fs_preds,
-                references=refs,
-                use_stemmer=True
-            )["rougeL"]
-
-        if do_gt or do_all:
-            dataset["gt_task_rougeL"] = ROUGE_METRIC.compute(
-                predictions=gt_preds,
-                references=refs,
-                use_stemmer=True
-            )["rougeL"]
-
-        # ipdb.set_trace()
-    
-        # break
-
-        tqdm.write(f"Saving results to {args.output}...")
+        print(f"Saving results to {args.output}...")
         with open(args.output, "w") as f:
             json.dump(data, f, indent=4)
-
-
