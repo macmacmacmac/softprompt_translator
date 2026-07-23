@@ -95,12 +95,12 @@ def run(args_list=None):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
-    parser.add_argument("--lr", type=float, default=5e-6)
-    parser.add_argument("--epochs", type=int, default=10)
-    parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/dpo_preference_datasets/10xtranslator_LOGPROBscore_10n_1k_0.5temp")
+    parser.add_argument("--lr", type=float, default=1e-6)
+    parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/dpo_preference_datasets/ROUGE-Lscore_10n_1k_0.5temp_01")
     parser.add_argument("--mapper_weights_dir", type=str, default="./shared/mapper_lora_weights/General-DoD-10x/meta-llama/Llama-3.1-8B-Instruct")
-    parser.add_argument("--dpo_save_dir", type=str, default="./shared/mapper_lora_weights/DPO_General-DoD-10x/meta-llama/Llama-3.1-8B-Instruct")
+    parser.add_argument("--dpo_save_dir", type=str, default="./shared/mapper_lora_weights/DPO_rougeL/meta-llama/Llama-3.1-8B-Instruct")
     parser.add_argument("--optim_weight_decay", type=float, default=0.1) 
     parser.add_argument("--beta", type=float, default=0.1) 
     args, _ = parser.parse_known_args(args_list)
@@ -157,6 +157,10 @@ def run(args_list=None):
     # └───────────────────────────────────────────────┘
     print("Loading Train and Validation datasets ...")
     train_dataset = torch.load(os.path.join(MAPPER_DATASET_PATH, 'train_dataset.pt'), map_location="cpu", weights_only=True)
+
+    # train_dataset2 = torch.load(os.path.join("./shared/datasets/dpo_preference_datasets/LOGPROBscore_10n_1k_1.0temp", 'train_dataset.pt'), map_location="cpu", weights_only=True)
+    # train_dataset = train_dataset + train_dataset2
+
     val_dataset = torch.load(os.path.join(MAPPER_DATASET_PATH, 'val_dataset.pt'), map_location="cpu", weights_only=True)
     
     print(f"Train Dataset size: {len(train_dataset)} | Validation Dataset size: {len(val_dataset)}")
@@ -275,20 +279,20 @@ def run(args_list=None):
                     )
                 ).mean()
 
-                total_val_loss += loss.item()
-        if total_val_loss < best_val_loss:
-            best_val_loss = total_val_loss    
-            model.save_pretrained(DPO_MAPPER_SAVE_PATH)
-            tokenizer.save_pretrained(DPO_MAPPER_SAVE_PATH)
-            print(f"New best val loss! PEFT LoRA weights saved to {DPO_MAPPER_SAVE_PATH}")
-
-            
+                total_val_loss += loss.item()            
                 
         avg_val_loss = total_val_loss / len(val_dataloader)
+
 
         tqdm.write(f"\nEpoch {epoch + 1} Summary:")
         tqdm.write(f"Train -> Loss: {avg_train_loss: .4f}")
         tqdm.write(f"Val   -> Loss: {avg_val_loss: .4f}")
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss    
+            os.makedirs(DPO_MAPPER_SAVE_PATH, exist_ok=True)
+            model.save_pretrained(DPO_MAPPER_SAVE_PATH)
+            tokenizer.save_pretrained(DPO_MAPPER_SAVE_PATH)
+            tqdm.write(f"New best val loss! PEFT LoRA weights saved to {DPO_MAPPER_SAVE_PATH}")
 
     # ┌───────────────────────────────────────────────┐
     # │               SAVE LORA ADAPTERS              │
