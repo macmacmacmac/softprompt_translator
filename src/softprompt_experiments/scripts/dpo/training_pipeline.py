@@ -96,7 +96,7 @@ def run(args_list=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
     parser.add_argument("--lr", type=float, default=1e-6)
-    parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/dpo_preference_datasets/ROUGE-Lscore_10n_1k_0.5temp_01")
     parser.add_argument("--mapper_weights_dir", type=str, default="./shared/mapper_lora_weights/General-DoD-10x/meta-llama/Llama-3.1-8B-Instruct")

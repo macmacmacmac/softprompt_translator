@@ -95,39 +95,13 @@ def run(args_list=None):
     print("=" * 100)
 
     parser = argparse.ArgumentParser()
-<<<<<<< HEAD
-    parser.add_argument("--input", type=str, default="./shared/verbalizations/master_verbalizations_v3.json")
-    parser.add_argument("--output", type=str, default="./shared/verbalizations/test.json")
-    parser.add_argument("--model", type=str, default="gpt-4o-mini")
-
-    parser.add_argument("--do_all", action="store_true")
-    parser.add_argument("--do_fs", action="store_true")
-    parser.add_argument("--do_fsr", action="store_true")
-    parser.add_argument("--do_mapper", action="store_true")
-    parser.add_argument("--do_gt", action="store_true")
-    parser.add_argument("--do_inspect", action="store_true")
-    parser.add_argument("--do_mapper10x", action="store_true")
-    parser.add_argument("--do_dpo", action="store_true")
-
-    args, _ = parser.parse_known_args(args_list)
-
-    do_all = args.do_all
-    do_fs = args.do_fs
-    do_fsr = args.do_fsr
-    do_mapper = args.do_mapper
-    do_gt = args.do_gt
-    do_inspect = args.do_inspect
-    do_mapper10x = args.do_mapper10x
-
-=======
-    parser.add_argument("--input", type=str, default="./shared/verbalizations/70b_results.json")
-    parser.add_argument("--output", type=str, default="./shared/verbalizations/70b_results.json")
+    parser.add_argument("--input", type=str, default="./shared/verbalizations/rougeL_z_W_DPO_0.1.json")
+    parser.add_argument("--output", type=str, default="./shared/verbalizations/rougeL_z_W_DPO_0.1.json")
     parser.add_argument("--model", type=str, default="gpt-4o-mini")
     parser.add_argument("--methods", nargs="+", default=["mapper", "inspect", "gt", "fs"], help="List of method prefixes to evaluate (e.g. mapper inspect gt fs mapper10x)")
 
     args, _ = parser.parse_known_args(args_list)
 
->>>>>>> main
     MODEL = args.model
     methods = args.methods
 
@@ -143,30 +117,6 @@ def run(args_list=None):
         data = json.load(f)
 
     for dataset in tqdm(data):
-<<<<<<< HEAD
-        # ipdb.set_trace()
-        val_instances = dataset["val_instances"]
-        train_instances = dataset["train_instances"]
-
-        mapper_prompt = str(dataset["mapper_hard_prompt"])
-        mapper10x_prompt = str(dataset["mapper10x_hard_prompt"])
-        dpo_prompt = str(dataset["dpo_10x_round1_hard_prompt"])
-        inspect_prompt = str(dataset["inspect_hard_prompt"])
-        fsr_prompt = str(dataset["fs_hard_prompt"])
-        gt_prompt = str(dataset["hard_prompt"])
-
-        fs_examples = "\n".join([f"Input: {t['input']}\nOutput: {t['output']}\n" for t in train_instances])
-        fs_prompt = FS_TASK_PROMPT.format(examples=fs_examples)
-
-        mapper_preds = []
-        mapper10x_preds = []
-        dpo_preds = []
-        inspect_preds = []
-        fsr_preds = []
-        fs_preds = []
-        gt_preds = []
-        
-=======
         instances = dataset["val_instances"]
         train_instances = dataset.get("train_instances", [])
 
@@ -183,63 +133,10 @@ def run(args_list=None):
             else:
                 print(f"Warning: Prompt for method '{m}' not found in dataset. Skipping '{m}'.")
                 prompts[m] = None
->>>>>>> main
 
         method_preds = {m: [] for m in methods if prompts[m] is not None}
         refs = []
 
-<<<<<<< HEAD
-        # TODO: refact to use vLLM for inference instead with local LLM for these calls
-        # we'll use llama 3.1 8b Instruct
-        # ideally also make use of batching 
-        for instance in val_instances:
-            input = instance["input"]
-            gt_output = instance["output"]
-
-            mapper_usr_prompt = USR_PROMPT.format(task_prompt = mapper_prompt, input = input)
-            mapper10x_usr_prompt = USR_PROMPT.format(task_prompt = mapper10x_prompt, input = input)
-            dpo_usr_prompt = USR_PROMPT.format(task_prompt = dpo_prompt, input = input)
-            inspect_usr_prompt = USR_PROMPT.format(task_prompt = inspect_prompt, input = input)
-            fsr_usr_prompt = USR_PROMPT.format(task_prompt = fsr_prompt, input = input)
-            fs_usr_prompt = USR_PROMPT.format(task_prompt = fs_prompt, input = input)
-            gt_usr_prompt = USR_PROMPT.format(task_prompt = gt_prompt, input = input)
-            
-
-            if do_mapper or do_all:
-                mapper_pred = get_llm_prediction(SYSTEM_PROMPT, mapper_usr_prompt, model=MODEL)
-                instance["mapper_output"] = mapper_pred
-                mapper_preds.append(mapper_pred)
-
-            if do_mapper10x or do_all:
-                mapper10x_pred = get_llm_prediction(SYSTEM_PROMPT, mapper10x_usr_prompt, model=MODEL)
-                instance["mapper10x_output"] = mapper10x_pred
-                mapper10x_preds.append(mapper10x_pred)
-
-            if do_mapper10x or do_all:
-                mapper10x_pred = get_llm_prediction(SYSTEM_PROMPT, mapper10x_usr_prompt, model=MODEL)
-                instance["mapper10x_output"] = mapper10x_pred
-                mapper10x_preds.append(mapper10x_pred)
-
-            if do_inspect or do_all:
-                inspect_pred = get_llm_prediction(SYSTEM_PROMPT, inspect_usr_prompt, model=MODEL)
-                instance["inspect_output"] = inspect_pred
-                inspect_preds.append(inspect_pred)
-
-            if do_fsr or do_all:
-                fsr_pred = get_llm_prediction(SYSTEM_PROMPT, fsr_usr_prompt, model=MODEL)
-                instance["fsr_output"] = fsr_pred
-                fsr_preds.append(fsr_pred)
-
-            if do_fs or do_all:
-                fs_pred = get_llm_prediction(SYSTEM_PROMPT, fs_usr_prompt, model=MODEL)
-                instance["fs_output"] = fs_pred
-                fs_preds.append(fs_pred)
-
-            if do_gt or do_all:
-                gt_pred = get_llm_prediction(SYSTEM_PROMPT, gt_usr_prompt, model=MODEL)
-                instance["gt_output"] = gt_pred
-                gt_preds.append(gt_pred)
-=======
         for instance in instances:
             input_text = instance["input"]
             gt_output = instance["output"]
@@ -249,7 +146,6 @@ def run(args_list=None):
                 pred = get_llm_prediction(user_prompt=usr_prompt, system_prompt=SYSTEM_PROMPT, model=MODEL)
                 instance[f"{m}_output"] = pred
                 method_preds[m].append(pred)
->>>>>>> main
 
 
             refs.append(gt_output)
@@ -262,48 +158,6 @@ def run(args_list=None):
                 use_stemmer=True
             )["rougeL"]
 
-<<<<<<< HEAD
-        if do_mapper10x or do_all:
-            dataset["mapper10x_task_rougeL"] = ROUGE_METRIC.compute(
-                predictions=mapper10x_preds,
-                references=refs,
-                use_stemmer=True
-            )["rougeL"]
-
-        if do_inspect or do_all:
-            dataset["inspect_task_rougeL"] = ROUGE_METRIC.compute(
-                predictions=inspect_preds,
-                references=refs,
-                use_stemmer=True
-            )["rougeL"]
-
-        if do_fsr or do_all:
-            dataset["fsr_task_rougeL"] = ROUGE_METRIC.compute(
-                predictions=fsr_preds,
-                references=refs,
-                use_stemmer=True
-            )["rougeL"]
-
-        if do_fs or do_all:
-            dataset["fs_task_rougeL"] = ROUGE_METRIC.compute(
-                predictions=fs_preds,
-                references=refs,
-                use_stemmer=True
-            )["rougeL"]
-
-        if do_gt or do_all:
-            dataset["gt_task_rougeL"] = ROUGE_METRIC.compute(
-                predictions=gt_preds,
-                references=refs,
-                use_stemmer=True
-            )["rougeL"]
-
-        # ipdb.set_trace()
-    
-        # break
-
-=======
->>>>>>> main
         tqdm.write(f"Saving results to {args.output}...")
         with open(args.output, "w") as f:
             json.dump(data, f, indent=4)

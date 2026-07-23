@@ -34,16 +34,16 @@ class DPOCollator:
         z_W_tokenized = self.tokenizer(
             z_W, 
             padding=True, 
-            truncation=True, 
-            max_length=300, # TODO: Test this value
+            # truncation=True, 
+            # max_length=300, # TODO: Test this value
             return_tensors="pt",
             add_special_tokens=True
         )
         z_L_tokenized = self.tokenizer(
             z_L, 
             padding=True, 
-            truncation=True, 
-            max_length=300, # TODO: Test this value
+            # truncation=True, 
+            # max_length=300, # TODO: Test this value
             return_tensors="pt",
             add_special_tokens=True
         )
