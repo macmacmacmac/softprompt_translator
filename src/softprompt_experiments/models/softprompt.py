@@ -51,7 +51,7 @@ class SoftPrompt(nn.Module):
                         self.num_tokens, 
                         word_embeddings.embedding_dim, 
                         dtype=model.dtype, 
-                        device=model.device
+                        device=word_embeddings.weight.device
                     )
                 )
 
@@ -98,13 +98,13 @@ class SoftPrompt(nn.Module):
                     # Randomly sample "num_tokens" token_ids from the vocab
                     init_token_ids = torch.randint(
                         0, vocab_size,(self.num_tokens,), dtype=torch.long
-                    ).to(model.device)
+                    ).to(word_embeddings.weight.device)
 
                 # Compute embeddings for init_token_ids
                 word_embedding_weights = word_embeddings(init_token_ids).detach().clone().to(model.dtype)
 
                 # Create a Module Parameter using the computed token embeddings
-                self.prompt_embeddings = nn.Parameter(word_embedding_weights.to(model.device))
+                self.prompt_embeddings = nn.Parameter(word_embedding_weights.to(word_embeddings.weight.device))
 
                 # Keep copies of initial token ids and token embeddings
                 self.initial_tokens = copy.deepcopy(init_token_ids)

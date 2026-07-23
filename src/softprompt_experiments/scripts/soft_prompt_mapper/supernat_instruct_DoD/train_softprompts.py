@@ -2,7 +2,7 @@ import os
 import argparse
 import torch
 from torch.utils.data import Dataset, DataLoader
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from softprompt_experiments.models.softprompt import SoftPrompt
 from tqdm import tqdm
 import pandas as pd
@@ -128,6 +128,13 @@ def run(args_list):
         "="*100,"\n"
     )
 
+    if torch.cuda.is_available():
+        print(f"Total GPUs: {torch.cuda.device_count()}")
+        for i in range(torch.cuda.device_count()):
+            print(f"GPU {i}: {torch.cuda.get_device_name(i)}")
+    else:
+        print("No CUDA GPU available.")
+
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=1e-3)
@@ -136,18 +143,21 @@ def run(args_list):
     parser.add_argument("--min_delta", type=float, default=0.001)
     parser.add_argument("--num_tokens", type=int, default=20)
     parser.add_argument("--max_length", type=int, default=512)
-    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--dataset_path", type=str, default="SoftPromptTranslator/SUPER-NATURALINSTRUCTIONS-english-filtered")
-    parser.add_argument("--save_dir", type=str, default="./trained_soft_prompts/General-DoD")
+    parser.add_argument("--save_dir", type=str, default="./shared/trained_soft_prompts/General-DoD-70b")
     parser.add_argument("--num_examples", type=int, default=500, help = "num of examples to use per task for training and eval of soft prompts")
     parser.add_argument("--seed", type=int, default=47)
     parser.add_argument("--train_only_test", action="store_true", help="Consider training only test soft prompts")
     parser.add_argument("--resume", action="store_true", help="Resume training from existing soft prompts")
     parser.add_argument("--resume_dir", type=str, default="./trained_soft_prompts/General-DoD", help="Directory containing existing soft prompts to load from")
+    parser.add_argument("--load_in_8bit", action="store_true", help="Load base model in 8-bit")
+    parser.add_argument("--load_in_4bit", action="store_true", help="Load base model in 4-bit")
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables
     MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
+    # MODEL_NAME = "meta-llama/Llama-3.1-70B-Instruct"
     DATASET_PATH = args.dataset_path
     LR = args.lr
     EPOCHS = args.epochs
@@ -174,13 +184,30 @@ def run(args_list):
     llama_tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     llama_tokenizer.pad_token = llama_tokenizer.eos_token # Llama doesn't have a default pad token, so we map it to EOS
 
+    # ┌───────────────────────────────────────────────┐
+    # │                 LOAD BASE MODEL               │
+    # └───────────────────────────────────────────────┘
     # Load Llama Model and set it in eval mode
-    llama_model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME,
-        dtype=DTYPE,
-        device_map = DEVICE
-    )
-    llama_model.eval()
+    print(f"Loading base model {MODEL_NAME}...")
+    load_kwargs = {"device_map": "auto", "attn_implementation": "sdpa"}
+
+    if args.load_in_8bit:
+            load_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
+    elif args.load_in_4bit:
+        load_kwargs["quantization_config"] = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=DTYPE,
+            bnb_4bit_use_double_quant=True,
+        )
+    else:
+        load_kwargs["dtype"] = DTYPE
+
+    llama_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, **load_kwargs)
+    # llama_model.eval()
+
+    # llama_model.gradient_checkpointing_enable()
+    llama_model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 
     # Freeze the entire Llama model since we only want to train Soft Prompts
     for param in llama_model.parameters():
@@ -188,6 +215,23 @@ def run(args_list):
 
     # Get the Llama Model's Word Embedding Mappings
     llama_word_embeddings = llama_model.get_input_embeddings()
+
+    # ── Derive the first & last device from the model's device map ──
+    # With device_map="auto", different layers live on different GPUs.
+    # inputs_embeds must land on the embedding layer's device (first device),
+    # and labels must land on the lm_head's device (last device) for loss computation.
+    if hasattr(llama_model, "hf_device_map") and llama_model.hf_device_map:
+        device_map_values = list(llama_model.hf_device_map.values())
+        FIRST_DEVICE = torch.device(f"cuda:{device_map_values[0]}" 
+                                     if isinstance(device_map_values[0], int) 
+                                     else device_map_values[0])
+        LAST_DEVICE = torch.device(f"cuda:{device_map_values[-1]}" 
+                                    if isinstance(device_map_values[-1], int) 
+                                    else device_map_values[-1])
+        print(f"Model device map detected: FIRST_DEVICE={FIRST_DEVICE}, LAST_DEVICE={LAST_DEVICE}")
+    else:
+        FIRST_DEVICE = torch.device(DEVICE)
+        LAST_DEVICE = torch.device(DEVICE)
 
     # Load HF Dataset
     print(f"Loading dataset from {DATASET_PATH}...")
@@ -301,7 +345,7 @@ def run(args_list):
             tokenizer=llama_tokenizer,
             word_embeddings=llama_word_embeddings,
             num_tokens=NUM_TOKENS
-        ).to(DEVICE)
+        ).to(FIRST_DEVICE)
 
         if RESUME and RESUME_DIR:
             old_softprompt_path = os.path.join(RESUME_DIR, task_name)
@@ -332,15 +376,16 @@ def run(args_list):
 
             # Set the soft prompt in training mode
             soft_prompt.train()
+            llama_model.train() # Required: gradient checkpointing only activates when self.training=True
             
             for step, batch in enumerate(train_dataloader):
                 # Reset the gradients
                 optimizer.zero_grad()
                 
                 # Move inputs to DEVICE
-                input_ids = batch["input_ids"].to(DEVICE)                                       # (batch_size, seq_len)
-                attention_mask = batch["attention_mask"].to(DEVICE)                             # (batch_size, seq_len)
-                labels = batch["labels"].to(DEVICE)                                             # (batch_size, soft_prompt_len + seq_len)
+                input_ids = batch["input_ids"].to(FIRST_DEVICE)                                       # (batch_size, seq_len)
+                attention_mask = batch["attention_mask"].to(FIRST_DEVICE)                             # (batch_size, seq_len)
+                labels = batch["labels"].to(LAST_DEVICE)                                             # (batch_size, soft_prompt_len + seq_len)
                 
                 # Get the text embeddings from Llama
                 with torch.no_grad():
@@ -354,7 +399,7 @@ def run(args_list):
                 inputs_embeds = torch.cat([soft_prompt_embeds, text_embeds], dim=1)             # (batch_size, soft_prompt_len + seq_len, embed_dim)
                 
                 # Concatenate Attention Masks: Add `1`s so Llama pays attention to the soft prompt
-                soft_prompt_mask = torch.ones((attention_mask.shape[0], NUM_TOKENS), dtype=attention_mask.dtype, device=DEVICE)     # (batch_size, soft_prompt_len)
+                soft_prompt_mask = torch.ones((attention_mask.shape[0], NUM_TOKENS), dtype=attention_mask.dtype, device=FIRST_DEVICE)     # (batch_size, soft_prompt_len)
                 full_attention_mask = torch.cat([soft_prompt_mask, attention_mask], dim=1)      # (batch_size, soft_prompt_len + seq_len)
 
                 # Forward Pass
@@ -372,46 +417,35 @@ def run(args_list):
                 optimizer.step()
 
                 total_train_loss += loss.item()
-
-                # Free up memory explicitly
-                del outputs, loss, inputs_embeds, text_embeds, soft_prompt_embeds, soft_prompt_mask, full_attention_mask
-                torch.cuda.empty_cache()
                 
             avg_train_loss = total_train_loss / len(train_dataloader)
 
             # Set soft_prompt in eval mode
             soft_prompt.eval()
+            llama_model.eval() # No backward pass during validation; checkpointing not needed
             total_val_loss = 0
             
-            val_preds = []
-            val_targets = []
-
             # Freeze all weights
             with torch.no_grad():
                 for batch in val_dataloader:
 
                     # Move inputs to DEVICE
-                    input_ids = batch["input_ids"].to(DEVICE)                                       # (batch_size, seq_len)
-                    attention_mask = batch["attention_mask"].to(DEVICE)                             # (batch_size, seq_len)
-                    labels = batch["labels"].to(DEVICE)                                             # (batch_size, soft_prompt_len + seq_len)
-                    input_only_ids = batch["input_only_ids"].to(DEVICE)
-                    input_only_attention_mask = batch["input_only_attention_mask"].to(DEVICE)
+                    input_ids = batch["input_ids"].to(FIRST_DEVICE)
+                    attention_mask = batch["attention_mask"].to(FIRST_DEVICE)
+                    labels = batch["labels"].to(LAST_DEVICE)
 
                     # Get the text embeddings from Llama
                     text_embeds = llama_word_embeddings(input_ids).detach()
-                    input_only_text_embeds = llama_word_embeddings(input_only_ids).detach()
                     
                     # Get the continuous Soft Prompt embeddings and duplicate for the batch
-                    soft_prompt_embeds = soft_prompt().expand(text_embeds.shape[0], -1, -1)         # (batch_size, soft_prompt_len, embed_dim)
+                    soft_prompt_embeds = soft_prompt().expand(text_embeds.shape[0], -1, -1)
                     
                     # Concatenate Embeddings: [Soft Prompt + Input Text]
-                    inputs_embeds = torch.cat([soft_prompt_embeds, text_embeds], dim=1)             # (batch_size, soft_prompt_len + seq_len, embed_dim)
-                    input_only_inputs_embeds = torch.cat([soft_prompt_embeds, input_only_text_embeds], dim=1)
+                    inputs_embeds = torch.cat([soft_prompt_embeds, text_embeds], dim=1)
                     
                     # Concatenate Attention Masks: Add `1`s so Llama pays attention to the soft prompt
-                    soft_prompt_mask = torch.ones((attention_mask.shape[0], NUM_TOKENS), dtype=attention_mask.dtype, device=DEVICE)     # (batch_size, soft_prompt_len)
-                    full_attention_mask = torch.cat([soft_prompt_mask, attention_mask], dim=1)      # (batch_size, soft_prompt_len + seq_len)
-                    input_only_full_attention_mask = torch.cat([soft_prompt_mask, input_only_attention_mask], dim=1)
+                    soft_prompt_mask = torch.ones((attention_mask.shape[0], NUM_TOKENS), dtype=attention_mask.dtype, device=FIRST_DEVICE)
+                    full_attention_mask = torch.cat([soft_prompt_mask, attention_mask], dim=1)
 
                     # Forward Pass
                     outputs = llama_model(
@@ -422,34 +456,12 @@ def run(args_list):
 
                     # Accumulate validation loss
                     total_val_loss += outputs.loss.item()
-                    
-                    # Generate Outputs for RougeL
-                    generated_ids = llama_model.generate(
-                        inputs_embeds=input_only_inputs_embeds,
-                        attention_mask=input_only_full_attention_mask,
-                        max_new_tokens=task_max_new_tokens,
-                        do_sample=False,
-                        pad_token_id=llama_tokenizer.eos_token_id
-                    )
-                    
-                    decoded_preds = llama_tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-                    val_preds.extend(decoded_preds)
-                    val_targets.extend(batch["targets"])
-
-                    # Free up memory explicitly
-                    del outputs, inputs_embeds, text_embeds, soft_prompt_embeds, soft_prompt_mask, full_attention_mask
-                    del input_only_inputs_embeds, input_only_text_embeds, input_only_full_attention_mask, generated_ids, input_ids, attention_mask, labels, input_only_ids, input_only_attention_mask
-                    torch.cuda.empty_cache()
             
             avg_val_loss = total_val_loss / len(val_dataloader)
             
-            # compute rougeL
-            rouge_result = rouge_metric.compute(predictions=val_preds, references=val_targets)
-            val_rougeL = rouge_result['rougeL']
-
             tqdm.write(f"\nEpoch {epoch + 1} Summary:")
             tqdm.write(f"Train -> Loss: {avg_train_loss: .4f}")
-            tqdm.write(f"Val   -> Loss: {avg_val_loss: .4f} | RougeL: {val_rougeL: .4f}")
+            tqdm.write(f"Val   -> Loss: {avg_val_loss: .4f}")
 
             # ┌───────────────────────────────────────────────┐
             # │               EARLY STOPPING LOGIC            │
@@ -457,13 +469,46 @@ def run(args_list):
             # Check if the current validation loss is better than our best so far
             if avg_val_loss < (best_val_loss - MIN_DELTA):
                 best_val_loss = avg_val_loss
-                best_val_rougeL = val_rougeL
                 best_train_loss = avg_train_loss
                 epochs_no_improve = 0
                 
                 # Save a copy of the best weights in memory
                 best_soft_prompt_state = {k: v.cpu().clone() for k, v in soft_prompt.state_dict().items()}
                 tqdm.write("  --> Validation loss improved! Saving current state.")
+
+                # Compute ROUGE-L only when val loss improves (generation is expensive)
+                tqdm.write("  --> Computing ROUGE-L via generation...")
+                val_preds = []
+                val_targets = []
+                with torch.no_grad():
+                    for batch in val_dataloader:
+                        input_only_ids = batch["input_only_ids"].to(FIRST_DEVICE)
+                        input_only_attention_mask = batch["input_only_attention_mask"].to(FIRST_DEVICE)
+
+                        # Get the text embeddings and soft prompt for generation
+                        input_only_text_embeds = llama_word_embeddings(input_only_ids).detach()
+                        soft_prompt_embeds = soft_prompt().expand(input_only_text_embeds.shape[0], -1, -1)
+                        input_only_inputs_embeds = torch.cat([soft_prompt_embeds, input_only_text_embeds], dim=1)
+
+                        soft_prompt_mask = torch.ones((input_only_attention_mask.shape[0], NUM_TOKENS), dtype=input_only_attention_mask.dtype, device=FIRST_DEVICE)
+                        input_only_full_attention_mask = torch.cat([soft_prompt_mask, input_only_attention_mask], dim=1)
+
+                        # Generate Outputs for RougeL
+                        generated_ids = llama_model.generate(
+                            inputs_embeds=input_only_inputs_embeds,
+                            attention_mask=input_only_full_attention_mask,
+                            max_new_tokens=task_max_new_tokens,
+                            do_sample=False,
+                            pad_token_id=llama_tokenizer.eos_token_id
+                        )
+                        
+                        decoded_preds = llama_tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+                        val_preds.extend(decoded_preds)
+                        val_targets.extend(batch["targets"])
+
+                rouge_result = rouge_metric.compute(predictions=val_preds, references=val_targets)
+                best_val_rougeL = rouge_result['rougeL']
+                tqdm.write(f"  --> ROUGE-L: {best_val_rougeL:.4f}")
             else:
                 epochs_no_improve += 1
                 tqdm.write(f"  --> No improvement. Patience: {epochs_no_improve}/{PATIENCE}")

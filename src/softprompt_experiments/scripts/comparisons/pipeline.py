@@ -96,8 +96,8 @@ def run(args_list=None):
     print("=" * 100)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", type=str, default="./shared/verbalizations/master_verbalizations_v3_fsr_8b.json")
-    parser.add_argument("--output", type=str, default="./shared/verbalizations/master_verbalizations_v3_fsr_8b_test.json")
+    parser.add_argument("--input", type=str, default="./shared/verbalizations/70b_results.json")
+    parser.add_argument("--output", type=str, default="./shared/verbalizations/70b_results.json")
     parser.add_argument("--model", type=str, default="gpt-4o-mini")
     parser.add_argument("--methods", nargs="+", default=["mapper", "inspect", "gt", "fs"], help="List of method prefixes to evaluate (e.g. mapper inspect gt fs mapper10x)")
 
@@ -158,6 +158,6 @@ def run(args_list=None):
                 use_stemmer=True
             )["rougeL"]
 
-        print(f"Saving results to {args.output}...")
+        tqdm.write(f"Saving results to {args.output}...")
         with open(args.output, "w") as f:
             json.dump(data, f, indent=4)
