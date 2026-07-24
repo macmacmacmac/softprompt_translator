@@ -6,7 +6,6 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
 from dotenv import load_dotenv
 from tqdm import tqdm
-from typing import List, Dict
 
 from softprompt_experiments.scripts.dpo.scoring_utils import (
     init_scoring,
@@ -21,7 +20,7 @@ load_dotenv()
 # ┌───────────────────────────────────────────────┐
 # │                 HELPER METHODS                │
 # └───────────────────────────────────────────────┘
-def generate_preference_dataset(dataset: List[Dict], translator_model: PeftModel, translator_tokenizer: AutoTokenizer) -> List[Dict]:
+def generate_preference_dataset(dataset: list[dict], translator_model: PeftModel, translator_tokenizer: AutoTokenizer) -> list[dict]:
     preference_dataset = []
     degenerate_tasks = []
     for k in range(K):
@@ -54,7 +53,7 @@ def generate_preference_dataset(dataset: List[Dict], translator_model: PeftModel
 
             # ── Step 2: Sample translations until one beats z_G ──
             # Pool of unique translations -> score (insertion-ordered), seeded with z_G
-            unique_scores: Dict[str, float] = {z_G: score_G}
+            unique_scores: dict[str, float] = {z_G: score_G}
 
             sample_embeds = soft_prompt.unsqueeze(0).expand(N, -1, -1)             # (N, soft_tokens, embed_dim)
             sample_mask = torch.ones(sample_embeds.shape[:2], dtype=torch.long, device=DEVICE)
@@ -150,7 +149,7 @@ def run(args_list=None):
 
     # Translator Model
     parser.add_argument("--lora-model-name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
-    parser.add_argument("--lora-weights-path", type=str, default="./shared/mapper_lora_weights/General-DoD-10x/meta-llama/Llama-3.1-8B-Instruct")
+    parser.add_argument("--lora-weights-path", type=str, default="./shared/mapper_lora_weights/DPO_rougeL_0.5/meta-llama/Llama-3.1-8B-Instruct")
 
     # HyperParams
     parser.add_argument("-n", "--num-samples-to-generate", type=int, default=10)
@@ -189,7 +188,7 @@ def run(args_list=None):
     OPENAI_CONCURRENCY = args.openai_concurrency
     USE_VLLM = args.use_vllm
     VLLM_GPU_MEMORY_UTILIZATION = args.vllm_gpu_memory_utilization
-    SAVE_DATASET_PATH = args.save_dataset_path + f"/{SCORE_FN}score_{N}n_{K}k_{TEMPERATURE}temp_{TOP_P}top_p"
+    SAVE_DATASET_PATH = args.save_dataset_path + f"/{SCORE_FN}score_{N}n_{K}k_{TEMPERATURE}temp_0.5beta"
 
     # Determine DEVICE and DTYPE
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
