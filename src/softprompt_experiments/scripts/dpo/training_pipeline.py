@@ -239,12 +239,9 @@ def run(args_list=None):
                 log_p_ref_z_W = get_logprob(z_prime, z_W_tokenized, ref_model, ref_llama_word_embeddings)
                 log_p_ref_z_L = get_logprob(z_prime, z_L_tokenized, ref_model, ref_llama_word_embeddings)
 
-            model.eval()
-            with torch.no_grad():
-                log_p_theta_z_W = get_logprob(z_prime, z_W_tokenized, model, llama_word_embeddings)
-                log_p_theta_z_L = get_logprob(z_prime, z_L_tokenized, model, llama_word_embeddings)
 
-            ipdb.set_trace()
+            log_p_theta_z_W = get_logprob(z_prime, z_W_tokenized, model, llama_word_embeddings)
+            log_p_theta_z_L = get_logprob(z_prime, z_L_tokenized, model, llama_word_embeddings)
 
             # DPO
             loss = -F.logsigmoid(
