@@ -198,6 +198,6 @@ def run(args_list=None):
 
 
     # Save to JSON
-    with open(f"./shared/verbalizations/rougeL_z_W_DPO_{str(args.beta)}.json", "w") as f:
+    with open(f"./shared/verbalizations/rougeL_z_W_DPO_{args.beta}.json", "w") as f:
         json.dump(master_verbalizations, f, indent=4)
     print("Done!\n")

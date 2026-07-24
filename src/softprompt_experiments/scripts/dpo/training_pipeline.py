@@ -3,9 +3,8 @@ import argparse
 import torch
 from torch.utils.data import Dataset, DataLoader
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from peft import PeftModel, LoraConfig, get_peft_model, TaskType
+from peft import PeftModel
 from tqdm import tqdm
-import evaluate
 import ipdb
 import torch.nn.functional as F
 
@@ -92,6 +91,13 @@ def run(args_list=None):
         "="*100,"\n"
     )
 
+    if torch.cuda.is_available():
+            print(f"Total GPUs: {torch.cuda.device_count()}")
+            for i in range(torch.cuda.device_count()):
+                print(f"GPU {i}: {torch.cuda.get_device_name(i)}")
+    else:
+        print("No CUDA GPU available.")
+
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
@@ -129,15 +135,24 @@ def run(args_list=None):
     # ┌───────────────────────────────────────────────┐
     # │                 LORA MODEL PREP               │
     # └───────────────────────────────────────────────┘
-    print(f"Loading base model {MODEL_NAME}...")
-    base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
-    base_model.gradient_checkpointing_enable()
+    print(f"Loading ref base model {MODEL_NAME}...")
+    ref_base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
+    
+    print(f"Loading ref LoRA adapter from {MAPPER_WEIGHTS_PATH}...")
+    ref_model = PeftModel.from_pretrained(ref_base_model, MAPPER_WEIGHTS_PATH, is_trainable=False)
+    ref_model.eval()
+    for param in ref_model.parameters():
+        param.requires_grad = False
 
-    print(f"Loading LoRA adapter from {MAPPER_WEIGHTS_PATH}...")
+    print(f"Loading policy base model {MODEL_NAME}...")
+    policy_base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=DTYPE, device_map=DEVICE)
+    policy_base_model.gradient_checkpointing_enable()
+
+    print(f"Loading policy LoRA adapter from {MAPPER_WEIGHTS_PATH}...")
     model = PeftModel.from_pretrained(
-        base_model,
+        policy_base_model,
         MAPPER_WEIGHTS_PATH,
-        is_trainable=True,   # important: continue training
+        is_trainable=True,
     )    
 
     # Print out exactly how many params are trainable
@@ -145,6 +160,7 @@ def run(args_list=None):
     
     # Get the Llama Model's Word Embedding Mappings
     llama_word_embeddings = model.get_base_model().get_input_embeddings()
+    ref_llama_word_embeddings = ref_model.get_base_model().get_input_embeddings()
 
     # Init Optimizer
     optimizer = torch.optim.AdamW(model.parameters(), 
@@ -218,13 +234,17 @@ def run(args_list=None):
             z_W_tokenized = batch["z_W_tokenized"].to(DEVICE)
             z_L_tokenized = batch["z_L_tokenized"].to(DEVICE)
 
-            log_p_ref_z_W = batch["log_p_ref_z_W"].to(DEVICE, dtype=DTYPE)
-            log_p_ref_z_L = batch["log_p_ref_z_L"].to(DEVICE, dtype=DTYPE)
+            # Compute ref log-probs on-the-fly from the frozen ref model
+            with torch.no_grad():
+                log_p_ref_z_W = get_logprob(z_prime, z_W_tokenized, ref_model, ref_llama_word_embeddings)
+                log_p_ref_z_L = get_logprob(z_prime, z_L_tokenized, ref_model, ref_llama_word_embeddings)
 
-            log_p_theta_z_W = get_logprob(z_prime, z_W_tokenized, model, llama_word_embeddings)
-            log_p_theta_z_L = get_logprob(z_prime, z_L_tokenized, model, llama_word_embeddings)
+            model.eval()
+            with torch.no_grad():
+                log_p_theta_z_W = get_logprob(z_prime, z_W_tokenized, model, llama_word_embeddings)
+                log_p_theta_z_L = get_logprob(z_prime, z_L_tokenized, model, llama_word_embeddings)
 
-            # ipdb.set_trace()
+            ipdb.set_trace()
 
             # DPO
             loss = -F.logsigmoid(
@@ -267,8 +287,9 @@ def run(args_list=None):
                 z_W_tokenized = batch["z_W_tokenized"].to(DEVICE)
                 z_L_tokenized = batch["z_L_tokenized"].to(DEVICE)
 
-                log_p_ref_z_W = batch["log_p_ref_z_W"].to(DEVICE, dtype=DTYPE)
-                log_p_ref_z_L = batch["log_p_ref_z_L"].to(DEVICE, dtype=DTYPE)
+                # Compute ref log-probs on-the-fly from the frozen ref model
+                log_p_ref_z_W = get_logprob(z_prime, z_W_tokenized, ref_model, ref_llama_word_embeddings)
+                log_p_ref_z_L = get_logprob(z_prime, z_L_tokenized, ref_model, ref_llama_word_embeddings)
 
                 log_p_theta_z_W = get_logprob(z_prime, z_W_tokenized, model, llama_word_embeddings)
                 log_p_theta_z_L = get_logprob(z_prime, z_L_tokenized, model, llama_word_embeddings)
@@ -299,7 +320,7 @@ def run(args_list=None):
     # ┌───────────────────────────────────────────────┐
     # │               SAVE LORA ADAPTERS              │
     # └───────────────────────────────────────────────┘
-    os.makedirs(DPO_MAPPER_SAVE_PATH, exist_ok=True)
+    # os.makedirs(DPO_MAPPER_SAVE_PATH, exist_ok=True)
     # model.save_pretrained(DPO_MAPPER_SAVE_PATH)
     # tokenizer.save_pretrained(DPO_MAPPER_SAVE_PATH)
     print(f"Mapper training complete! Best val loss: {best_val_loss}. PEFT LoRA weights saved to {DPO_MAPPER_SAVE_PATH}")
