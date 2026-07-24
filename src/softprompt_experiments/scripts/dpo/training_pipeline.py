@@ -99,8 +99,8 @@ def run(args_list=None):
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/dpo_preference_datasets/ROUGE-Lscore_10n_1k_0.5temp_01")
-    parser.add_argument("--mapper_weights_dir", type=str, default="./shared/mapper_lora_weights/General-DoD-10x/meta-llama/Llama-3.1-8B-Instruct")
-    parser.add_argument("--dpo_save_dir", type=str, default="./shared/mapper_lora_weights/DPO_rougeL/meta-llama/Llama-3.1-8B-Instruct")
+    parser.add_argument("--mapper_weights_dir", type=str, default="./shared/mapper_lora_weights_overfit/General-DoD-10x/meta-llama/Llama-3.1-8B-Instruct")
+    parser.add_argument("--dpo_save_dir", type=str, default="./shared/mapper_lora_weights")
     parser.add_argument("--optim_weight_decay", type=float, default=0.1) 
     parser.add_argument("--beta", type=float, default=0.1) 
     args, _ = parser.parse_known_args(args_list)
@@ -109,7 +109,7 @@ def run(args_list=None):
     MODEL_NAME = args.model_name
     MAPPER_DATASET_PATH = args.mapper_dataset_path
     MAPPER_WEIGHTS_PATH = args.mapper_weights_dir
-    DPO_MAPPER_SAVE_PATH = args.dpo_save_dir
+    DPO_MAPPER_SAVE_PATH = f"{args.dpo_save_dir}/DPO_rougeL_{args.beta}/meta-llama/Llama-3.1-8B-Instruct"
     LR = args.lr
     EPOCHS = args.epochs
     BATCH_SIZE = args.batch_size
@@ -223,6 +223,8 @@ def run(args_list=None):
 
             log_p_theta_z_W = get_logprob(z_prime, z_W_tokenized, model, llama_word_embeddings)
             log_p_theta_z_L = get_logprob(z_prime, z_L_tokenized, model, llama_word_embeddings)
+
+            # ipdb.set_trace()
 
             # DPO
             loss = -F.logsigmoid(

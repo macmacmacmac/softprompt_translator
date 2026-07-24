@@ -161,3 +161,5 @@ def run(args_list=None):
         tqdm.write(f"Saving results to {args.output}...")
         with open(args.output, "w") as f:
             json.dump(data, f, indent=4)
+
+    verbalizations_rougeL_visualizer.run(args_list)
