@@ -6,6 +6,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
 from dotenv import load_dotenv
 from tqdm import tqdm
+import json
 
 from softprompt_experiments.scripts.dpo.scoring_utils import (
     init_scoring,
@@ -20,9 +21,10 @@ load_dotenv()
 # ┌───────────────────────────────────────────────┐
 # │                 HELPER METHODS                │
 # └───────────────────────────────────────────────┘
-def generate_preference_dataset(dataset: list[dict], translator_model: PeftModel, translator_tokenizer: AutoTokenizer) -> list[dict]:
+def generate_preference_dataset(dataset: list[dict], translator_model: PeftModel, translator_tokenizer: AutoTokenizer) -> tuple[list[dict], list[dict]]:
     preference_dataset = []
     degenerate_tasks = []
+    all_translations_stats = []
     for k in range(K):
         for task in tqdm(dataset, desc=f"Round {k + 1}/{K}"):
             # Extract soft prompt
@@ -55,6 +57,13 @@ def generate_preference_dataset(dataset: list[dict], translator_model: PeftModel
             # Pool of unique translations -> score (insertion-ordered), seeded with z_G
             unique_scores: dict[str, float] = {z_G: score_G}
 
+            all_translations_stats.append({
+                "task_name": task["task_name"],
+                "z": z_G,
+                "score": score_G,
+                "temperature": 0.0
+            })
+
             sample_embeds = soft_prompt.unsqueeze(0).expand(N, -1, -1)             # (N, soft_tokens, embed_dim)
             sample_mask = torch.ones(sample_embeds.shape[:2], dtype=torch.long, device=DEVICE)
 
@@ -75,16 +84,25 @@ def generate_preference_dataset(dataset: list[dict], translator_model: PeftModel
                 translations = translator_tokenizer.batch_decode(gen_ids, skip_special_tokens=True)
                 translations = [txt.strip() for txt in translations]
 
-                # Score ALL genuinely new, non-empty texts in the full batch
-                new_texts = [txt for txt in translations if txt and txt not in unique_scores]
+                # Score ALL genuinely new texts in the full batch (including empty strings)
+                new_texts = [txt for txt in translations if txt not in unique_scores]
                 if new_texts:
                     new_scores = get_scores(new_texts, task["train_instances"])
                     for txt, score in zip(new_texts, new_scores.tolist()):
                         unique_scores[txt] = score
 
-                    # Check if any new translation beat z_G
-                    if new_scores.max().item() > score_G:
-                        break
+                # Record all translations generated in this batch
+                for txt in translations:
+                    all_translations_stats.append({
+                        "task_name": task["task_name"],
+                        "z": txt,
+                        "score": unique_scores[txt],
+                        "temperature": temperature
+                    })
+
+                # Check if any new translation beat z_G
+                if new_texts and new_scores.max().item() > score_G:
+                    break
 
                 if attempt < MAX_RETRIES:
                     temperature = min(temperature + RETRY_TEMP_INCREMENT, MAX_RETRY_TEMPERATURE)
@@ -119,7 +137,7 @@ def generate_preference_dataset(dataset: list[dict], translator_model: PeftModel
     if degenerate_tasks:
         print(f"Found {len(degenerate_tasks)} task(s) due to degenerate preference pairs: {degenerate_tasks}")
 
-    return preference_dataset
+    return preference_dataset, all_translations_stats
 
 
 
@@ -188,7 +206,9 @@ def run(args_list=None):
     OPENAI_CONCURRENCY = args.openai_concurrency
     USE_VLLM = args.use_vllm
     VLLM_GPU_MEMORY_UTILIZATION = args.vllm_gpu_memory_utilization
-    SAVE_DATASET_PATH = args.save_dataset_path + f"/{SCORE_FN}score_{N}n_{K}k_{TEMPERATURE}temp_0.5beta"
+    SAVE_DATASET_PATH = args.save_dataset_path + f"/{LORA_WEIGHTS_PATH.split("/")[-3]}"
+
+    print(f"Will be saving Pref Dataset to {SAVE_DATASET_PATH}")
 
     # Determine DEVICE and DTYPE
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -245,8 +265,8 @@ def run(args_list=None):
     # ┌───────────────────────────────────────────────┐
     # │          PREFERENCE DATASET GENERATION        │
     # └───────────────────────────────────────────────┘
-    train_preference_dataset = generate_preference_dataset(train_dataset, translator_model, translator_tokenizer)
-    val_preference_dataset = generate_preference_dataset(val_dataset, translator_model, translator_tokenizer)
+    # train_preference_dataset, train_stats = generate_preference_dataset(train_dataset, translator_model, translator_tokenizer)
+    val_preference_dataset, val_stats = generate_preference_dataset(val_dataset, translator_model, translator_tokenizer)
 
 
     # ┌───────────────────────────────────────────────┐
@@ -259,9 +279,19 @@ def run(args_list=None):
     train_dataset_path = os.path.join(SAVE_DATASET_PATH, 'train_dataset.pt')
     val_dataset_path = os.path.join(SAVE_DATASET_PATH, 'val_dataset.pt')
     
-    torch.save(train_preference_dataset, train_dataset_path)
+    # torch.save(train_preference_dataset, train_dataset_path)
     torch.save(val_preference_dataset, val_dataset_path)
     
-    print(f"Saved Train Split ({len(train_preference_dataset)} samples) to: {train_dataset_path}")
+    # print(f"Saved Train Split ({len(train_preference_dataset)} samples) to: {train_dataset_path}")
     print(f"Saved Val Split ({len(val_preference_dataset)} samples) to: {val_dataset_path}")
+
+    train_stats_path = os.path.join(SAVE_DATASET_PATH, 'train_translations_stats.json')
+    val_stats_path = os.path.join(SAVE_DATASET_PATH, 'val_translations_stats.json')
     
+    # with open(train_stats_path, 'w') as f:
+    #     json.dump(train_stats, f, indent=4)
+        
+    with open(val_stats_path, 'w') as f:
+        json.dump(val_stats, f, indent=4)
+        
+    print(f"Saved detailed translations stats to: {train_stats_path} and {val_stats_path}")

@@ -8,11 +8,11 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
 from openai import OpenAI, RateLimitError
 from tqdm import tqdm
-from typing import List, Dict, Tuple
 import evaluate
 from vllm import LLM, SamplingParams
 import logging
 import absl.logging
+import sys
 
 # Silence verbose rouge-scorer logs (handles both standard logging and absl)
 logging.getLogger("rouge_scorer").setLevel(logging.WARNING)
@@ -101,7 +101,7 @@ def init_scoring(
     # ── Validate ──
     if SCORE_FN not in ("ROUGE-L", "LOGPROB"):
         print(f"Unsupported Score Function: {SCORE_FN}!")
-        exit(1)
+        sys.exit(1)
 
     # ── Backend-specific setup ──
     if SCORE_BACKEND == "openai":
@@ -207,12 +207,12 @@ def prompt_openai_model(
 def generate_outputs_concurrently(
     client: OpenAI,
     model_name: str,
-    translations: List[str],
-    train_instances: List[Dict],
+    translations: list[str],
+    train_instances: list[dict],
     sys_prompt: str,
     usr_prompt_template: str,
     concurrency: int
-) -> List[List[str]]:
+) -> list[list[str]]:
     # Build the full (translation x train_instance) job list up front so all
     # OpenAI calls can be fired concurrently instead of one blocking call at a time.
     # Each job carries its own fully-formatted system/user prompt plus the (i, j)
@@ -232,7 +232,7 @@ def generate_outputs_concurrently(
     # the network), so a thread pool -- not a process pool -- is the right tool
     # here: it parallelizes the waiting without paying for GIL-bound work.
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
-        future_to_coords: Dict[Future[str], Tuple[int, int]] = {
+        future_to_coords: dict[Future[str], tuple[int, int]] = {
             executor.submit(prompt_openai_model, client, model_name, system_prompt, user_prompt): (i, j)
             for (i, j, system_prompt, user_prompt) in jobs
         }
@@ -256,8 +256,8 @@ def get_score_backend(score_model_name: str) -> str:
 
 
 def get_scores(
-        translations: List[str],
-        train_instances: List[Dict]
+        translations: list[str],
+        train_instances: list[dict]
     ) -> torch.Tensor:
     if SCORE_FN == "ROUGE-L":
         return get_rougeL_scores(
@@ -273,8 +273,8 @@ def get_scores(
 
 
 def get_rougeL_scores(
-        translations: List[str],
-        train_instances: List[Dict]
+        translations: list[str],
+        train_instances: list[dict]
     ) -> torch.Tensor:
     global ROUGE_METRIC
     if ROUGE_METRIC is None:
@@ -308,9 +308,9 @@ def get_rougeL_scores(
 
 
 def generate_outputs_vllm(
-        translations: List[str],
-        train_instances: List[Dict]
-    ) -> List[List[str]]:
+        translations: list[str],
+        train_instances: list[dict]
+    ) -> list[list[str]]:
 
     # Build prompts and job mapping
     jobs = []
@@ -339,9 +339,9 @@ def generate_outputs_vllm(
 
 
 def generate_outputs_locally(
-        translations: List[str],
-        train_instances: List[Dict]
-    ) -> List[List[str]]:
+        translations: list[str],
+        train_instances: list[dict]
+    ) -> list[list[str]]:
     # Build the full (translation x train_instance) job list up front, mirroring the
     # OpenAI path: each job carries its fully-formatted prompt plus the (i, j)
     # coordinates needed to place its result back into y_hat in the right slot.
@@ -389,8 +389,8 @@ def generate_outputs_locally(
 
 
 def get_logprob_scores(
-        translations: List[str],
-        train_instances: List[Dict]
+        translations: list[str],
+        train_instances: list[dict]
     ) -> torch.Tensor:
     logprob_scores = []
     y = [t["output"] for t in train_instances]
@@ -459,8 +459,8 @@ def get_logprob_of_translation_given_soft_prompt(
 def get_logprob_of_output_given_prompt(
         model: AutoModelForCausalLM | PeftModel,
         tokenizer,
-        prompts: List[str],
-        outputs: List[str]
+        prompts: list[str],
+        outputs: list[str]
     ) -> torch.Tensor:
     # Tokenize prompt and output separately and concatenate ids -- this makes the
     # prompt/output boundary exact by construction (no cross-junction BPE merging
