@@ -59,8 +59,8 @@ INSPECT_DATASET_CONFIGS = {
     },
     "SetFit/TREC-QC": {
         "epochs": 20,
-        # "lr": 8e-4,
-        "lr": 8e-3,
+        "lr": 8e-4,
+        # "lr": 8e-3,
         "batch_size": 8,
         "eval_split": "test",
         "text_column": "text",
@@ -354,12 +354,13 @@ def run(args_list=None):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--save_dir", type=str, default="./inspect_soft_prompts_peft_random_500_examples")
+    parser.add_argument("--save_dir", type=str, default="./shared/trained_soft_prompts/inspect_soft_prompts_peft_1B")
     parser.add_argument("--num_tokens", type=int, default=20)
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables
-    MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
+    # MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
+    MODEL_NAME = "meta-llama/Llama-3.2-1B"
     # MODEL_NAME = "meta-llama/Llama-2-7b-hf"
     SAVE_DIR = args.save_dir
     NUM_TOKENS = args.num_tokens

@@ -30,11 +30,11 @@ def run(args_list=None):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
-    parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD-10x")
+    parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD-10x-new")
     parser.add_argument("--master_verbalizations_path", type=str, default="./shared/verbalizations/rougeL_z_W.json")
     parser.add_argument("--fieldname_to_save", type=str, default="dpo_10x_round1")
     parser.add_argument("--sample", action='store_true', help="Use a sample of val dataset instead of the full val dataset")
-    parser.add_argument("--lora_dir", type=str, default="./shared/mapper_lora_weights/DPO_rougeL/")
+    parser.add_argument("--lora_dir", type=str, default="./shared/mapper_lora_weights/General-DoD-10x-new")
     parser.add_argument("--beta", type=float, default=0.1)
     parser.add_argument("--num_samples", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=16)
@@ -186,18 +186,18 @@ def run(args_list=None):
 
     # Merge results into master verbaliztions
     # Uncomment as per need
-    with open(MASTER_VERBALIZATIONS_PATH, "r") as f:
-        master_verbalizations = json.load(f)
-        assert len(master_verbalizations) == len(results_data)
+    # with open(MASTER_VERBALIZATIONS_PATH, "r") as f:
+    #     master_verbalizations = json.load(f)
+    #     assert len(master_verbalizations) == len(results_data)
 
-    for m, r in zip(master_verbalizations, results_data):
-        assert m["task_name"] == r["task_name"]
-        m[f"{args.fieldname_to_save}_hard_prompt"] = r["mapper_hard_prompt"]
-        m[f"{args.fieldname_to_save}_hard_prompt_rougeL"] = r["mapper_hard_prompt_rougeL"]
-        m[f"{args.fieldname_to_save}_hard_prompt_cos_sim"] = r["mapper_hard_prompt_cos_sim"]
+    # for m, r in zip(master_verbalizations, results_data):
+    #     assert m["task_name"] == r["task_name"]
+    #     m[f"{args.fieldname_to_save}_hard_prompt"] = r["mapper_hard_prompt"]
+    #     m[f"{args.fieldname_to_save}_hard_prompt_rougeL"] = r["mapper_hard_prompt_rougeL"]
+    #     m[f"{args.fieldname_to_save}_hard_prompt_cos_sim"] = r["mapper_hard_prompt_cos_sim"]
 
 
     # Save to JSON
-    with open(f"./shared/verbalizations/rougeL_z_W_DPO_{args.beta}.json", "w") as f:
-        json.dump(master_verbalizations, f, indent=4)
+    with open("./shared/verbalizations/mapper10x.json", "w") as f:
+        json.dump(results_data, f, indent=4)
     print("Done!\n")

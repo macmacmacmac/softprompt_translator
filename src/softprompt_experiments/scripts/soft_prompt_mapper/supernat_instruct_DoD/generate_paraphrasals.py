@@ -15,7 +15,7 @@ def run(args_list):
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_path", type=str, default="SoftPromptTranslator/SUPER-NATURALINSTRUCTIONS-english-filtered")
-    parser.add_argument("--new_dataset_path", type=str, default="SoftPromptTranslator/SUPER-NATURALINSTRUCTIONS-english-filtered-10x-augmented-enriched")
+    parser.add_argument("--new_dataset_path", type=str, default="SoftPromptTranslator/SUPER-NATURALINSTRUCTIONS-english-filtered-10x")
     parser.add_argument("--teacher_model", type=str, default="mistralai/Mistral-Small-3.1-24B-Instruct-2503")
     parser.add_argument("--tokenizer_model", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
     parser.add_argument("--num_paraphrasals", type=int, default=10, help="Number of paraphrasals to generate per instruction")
@@ -33,21 +33,23 @@ def run(args_list):
     dataset_dict = load_dataset(DATASET_PATH)
 
     # Drop reduced_instruction(s) column if it already exists
-    for split in dataset_dict.keys():
+    for split in dataset_dict:
         if "reduced_instruction" in dataset_dict[split].column_names:
             dataset_dict[split] = dataset_dict[split].remove_columns("reduced_instruction")
         if "reduced_instructions" in dataset_dict[split].column_names:
             dataset_dict[split] = dataset_dict[split].remove_columns("reduced_instructions")
+        if "paraphrased_instructions" in dataset_dict[split].column_names:
+            dataset_dict[split] = dataset_dict[split].remove_columns("paraphrased_instructions")
 
     # Extract unique instructions globally
-    print(f"\nExtracting unique instructions...")
+    print("\nExtracting unique instructions...")
 
     # We will build a dict mapping instruction to a set of task_names
     # str -> set()
     unique_instructions = {}
     
     # Iterate over train and test splits to find all unique instructions
-    for split in dataset_dict.keys():
+    for split in dataset_dict:
         for row in dataset_dict[split]:
             inst = row["instruction"]
             if inst not in unique_instructions:
@@ -64,7 +66,7 @@ def run(args_list):
     paraphrased_map = {}             # original_instruction -> paraphrased_instruction
     original_token_counts = {}       # original_instruction -> token_count
 
-    print(f"\nChecking token lengths...")
+    print("\nChecking token lengths...")
     for instruction in tqdm(unique_instructions.keys(), desc="Tokenizing"):
         # We don't need the actual tokens, just the count
         token_count = len(tokenizer.encode(instruction, add_special_tokens=False))
@@ -89,7 +91,7 @@ def run(args_list):
         n=NUM_PARAPHRASALS,
         temperature=0.5 if NUM_PARAPHRASALS > 1 else 0.3,
         presence_penalty=0.5,
-        max_tokens=300,
+        max_tokens=512,
     )
 
     # TODO: Refine this further after spot checking
@@ -102,13 +104,11 @@ def run(args_list):
     # )
 
     system_prompt = (
-        "You are an expert at writing prompt instructions."
-        "Your task is to paraphrase the following instruction, stripping away redundant wording while enriching the description to provide specific details while remaining concise."
-        "For instance, if the original instruction is about classifying text, add informative details about specific features to look for."
+        "You are an expert at paraphrasing instructions. "
+        "Your task is to rephrase the following instruction using different words and sentence structures while keeping the exact same meaning and level of detail. "
         "CRITICAL: You MUST explicitly preserve all specific classes, exact tags, labels, output formats, and special syntax constraints. "
-        "CRITICAL: Do NOT oversimplify or remove specific mappings between concepts (e.g., specifying which sentence is the premise, exact sentence counts, positional logic, or structural relationships). "
-        "Use AT MOST of 4 to 5 short sentences. Strip away ONLY filler words, long narrative examples, and conversational redundant explanations. "
-        "Output ONLY the paraphrased instruction text and absolutely nothing else. Do NOT include phrases like 'Here is the paraphrased version'."
+        "CRITICAL: Do NOT alter or remove specific mappings between concepts (e.g., specifying which sentence is the premise, exact sentence counts, positional logic, or structural relationships). "
+        "Output ONLY the paraphrased instruction text and absolutely nothing else. Do NOT include conversational filler like 'Here is the paraphrased version'."
     )
 
     messages_list = [
@@ -119,7 +119,7 @@ def run(args_list):
         for inst in instructions_to_paraphrase
     ]
 
-    print(f"\nGenerating paraphrased instructions in batches...")
+    print("\nGenerating paraphrased instructions in batches...")
     outputs = llm.chat(messages=messages_list, sampling_params=sampling_params)
 
     for i, output in enumerate(outputs):
@@ -135,7 +135,7 @@ def run(args_list):
     gc.collect()
     torch.cuda.empty_cache()
 
-    print(f"\nSaving a log of the paraphrased instructions to 'paraphrased_instructions_log.json'...")
+    print("\nSaving a log of the paraphrased instructions to 'paraphrased_instructions_log.json'...")
     log_data = []
     for instruction in instructions_to_paraphrase:
         paraphrased_instructions = paraphrased_map[instruction]
@@ -153,7 +153,7 @@ def run(args_list):
 
     
     # Map the reduced instructions back to the main dataset
-    print(f"\nMapping paraphrased instructions back to the main dataset rows...")
+    print("\nMapping paraphrased instructions back to the main dataset rows...")
     
     def add_paraphrased_instructions(example):
         example["paraphrased_instructions"] = paraphrased_map[example["instruction"]]

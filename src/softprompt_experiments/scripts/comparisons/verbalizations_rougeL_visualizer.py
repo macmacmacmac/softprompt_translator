@@ -30,7 +30,7 @@ def build_visual(output_path):
         'soft_task_rougeL',
         'gt_task_rougeL',
         'mapper10x_logprob_z_W_task_rougeL',
-        'dpo10xround1_task_rougeL',
+        'dpo_10x_round1_task_rougeL',
         'mapper10x_task_rougeL',
         'fsr_task_rougeL',
         'mapper_task_rougeL',
@@ -112,7 +112,7 @@ def run(args_list=None):
     print("=" * 100)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", type=str, default="./shared/verbalizations/rougeL_z_W_DPO_0.1.json")
+    parser.add_argument("--output", type=str, default="./shared/verbalizations/rougeL_DPO_SFT_test.json")
     args, _ = parser.parse_known_args(args_list)
 
     build_visual(output_path=args.output)

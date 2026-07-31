@@ -3,11 +3,11 @@ import argparse
 from tqdm import tqdm
 import torch
 from datasets import load_dataset
-from typing import List, Dict, Any
+from typing import Any
 import random
 
 
-def build_task_records(split_df, num_examples: int, seed: int, num_train_instances: int) -> List[Dict]:
+def build_task_records(split_df, num_examples: int, seed: int, num_train_instances: int) -> list[dict]:
     """
     Reproduce train_softprompts.py's per-task sample + 90/10 split so that
     validation_instances are the exact rows the soft prompt was RougeL-scored on,
@@ -17,7 +17,7 @@ def build_task_records(split_df, num_examples: int, seed: int, num_train_instanc
     records = []
     grouped = split_df.groupby('task_name')
 
-    for task_name in grouped.groups.keys():
+    for task_name in grouped.groups:
         task_df = grouped.get_group(task_name)
 
         # Mirror train_softprompts.py exactly: cap to num_examples (seeded), then 90/10 split.
@@ -33,21 +33,31 @@ def build_task_records(split_df, num_examples: int, seed: int, num_train_instanc
         # train_instances = train_rows[['input', 'output']].to_dict('records')
         val_instances = val_rows[['input', 'output']].to_dict('records')
 
-        # reduced_instructions explosion is disabled -> one instruction per task
-        instruction = task_df['instruction'].iloc[0]
+        # Extract all instructions if requested
+        if 'paraphrased_instructions' in task_df.columns:
+            base_inst = task_df['instruction'].iloc[0]
+            para_insts = task_df['paraphrased_instructions'].iloc[0]
+            # Ensure it's treated as a list
+            if isinstance(para_insts, list) or hasattr(para_insts, 'tolist'):
+                all_insts = list(para_insts) + [base_inst]
+            else:
+                all_insts = [base_inst]
+        else:
+            all_insts = [task_df['instruction'].iloc[0]]
 
-        records.append({
-            'task_name': task_name,
-            'instruction': instruction,
-            'train_instances': train_instances,
-            'val_instances': val_instances
-        })
+        for inst in all_insts:
+            records.append({
+                'task_name': task_name,
+                'instruction': inst,
+                'train_instances': train_instances,
+                'val_instances': val_instances
+            })
 
     return records
 
 
-def compile_data_list(dataset_records: List[Dict[str, Any]],
-                      trained_soft_prompts_dir: str) -> List[Dict]:
+def compile_data_list(dataset_records: list[dict[str, Any]],
+                      trained_soft_prompts_dir: str) -> list[dict]:
 
     compiled_data = []
     missing_count = 0
@@ -119,9 +129,9 @@ def run(args_list):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_path", type=str, default="SoftPromptTranslator/SUPER-NATURALINSTRUCTIONS-english-filtered")
+    parser.add_argument("--dataset_path", type=str, default="SoftPromptTranslator/SUPER-NATURALINSTRUCTIONS-english-filtered-10x")
     parser.add_argument("--trained_soft_prompts_dir", type=str, default="./shared/trained_soft_prompts/General-DoD")
-    parser.add_argument("--compiled_dataset_dir", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD-DPO")
+    parser.add_argument("--compiled_dataset_dir", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD-10x-new")
     parser.add_argument("--num_examples", type=int, default=500, help="Per-task cap; MUST match train_softprompts.py to reproduce its val split")
     parser.add_argument("--num_train_instances", type=int, default=100, help="Number of training-split instances to store per task")
     parser.add_argument("--seed", type=int, default=47)
@@ -139,7 +149,7 @@ def run(args_list):
     hf_dataset = load_dataset(DATASET_PATH).select_columns([
         'task_name', 
         'instruction',
-        # 'reduced_instructions',
+        'paraphrased_instructions',
         'input', 
         'output'
     ])
@@ -147,25 +157,21 @@ def run(args_list):
     # Convert to Pandas
     train_dataset_df = hf_dataset['train'].to_pandas()
     test_dataset_df = hf_dataset['test'].to_pandas()
-
-    # Add instruction field to paraphrased_instructions for train_df
-    # train_dataset_df['reduced_instructions'] = train_dataset_df.apply(
-    #     lambda row: list(row['reduced_instructions']) + [row['instruction']],
-    #     axis=1 # Apply row by row
-    # )
     
-    # Drop the instruction column in train_df and reduced_instructions in test_df
-    # train_dataset_df = train_dataset_df.drop(columns=['instruction'], axis=1)
-    # test_dataset_df = test_dataset_df.drop(columns=['reduced_instructions'], axis=1)
+    # We drop paraphrased_instructions from test_df so we only test on the base instruction.
+    if 'paraphrased_instructions' in test_dataset_df.columns:
+        test_dataset_df = test_dataset_df.drop(columns=['paraphrased_instructions'])
 
-    # Explode (unwind) the reduced instructions for train_df and rename column to 'instruction'
-    # train_dataset_df = train_dataset_df.explode('reduced_instructions').rename(columns={
-    #     'reduced_instructions': 'instruction'
-    # })
-
+    # We no longer explode the dataset_df here because doing so before 
+    # build_task_records would break the train/val sampling split!
+    # build_task_records will now handle extracting the multiple instructions.
+    
     # Reproduce train_softprompts.py's per-task split so validation_instances match the
     # exact rows each soft prompt was RougeL-scored on (+ a few training-split instances).
     train_dataset_records = build_task_records(train_dataset_df, NUM_EXAMPLES, SEED, NUM_TRAIN_INSTANCES)
+    # For test dataset, we generally only test on the base instruction, but the function 
+    # will handle extraction if paraphrased_instructions exists.
+    # To keep test set 1-to-1 with softprompts, we drop paraphrased_instructions from test_df above.
     test_dataset_records = build_task_records(test_dataset_df, NUM_EXAMPLES, SEED, NUM_TRAIN_INSTANCES)
 
     print(f"Found {len(train_dataset_records)} hard prompts in training dataset")
@@ -175,7 +181,7 @@ def run(args_list):
     train_compiled_data = compile_data_list(train_dataset_records, TRAINED_SOFT_PROMPTS_DIR)
     test_compiled_data = compile_data_list(test_dataset_records, TRAINED_SOFT_PROMPTS_DIR)
 
-    # Save the Compiled Data List to a Torch File
+    # Save the Compiled Data list to a Torch File
     print(f"\nCompilation Complete! Successfully paired: {len(train_compiled_data)} train datasets and {len(test_compiled_data)} test datasets.")
     # print(f"\nCompilation Complete! Successfully paired: {len(test_compiled_data)} test datasets.")
 

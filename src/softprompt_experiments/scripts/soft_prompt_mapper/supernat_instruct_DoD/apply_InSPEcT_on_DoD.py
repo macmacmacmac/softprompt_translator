@@ -44,9 +44,9 @@ def run(args_list=None):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--soft_prompts_dataset_path", type=str, default="./datasets/inspect_training_dataset/SUPER-NATURALINSTRUCTIONS-english-filtered_peft")
-    parser.add_argument("--training_stats_path", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english-filtered_peft/training_stats.csv")
-    parser.add_argument("--results_save_dir", type=str, default="./inspect_results")
+    parser.add_argument("--soft_prompts_dataset_path", type=str, default="./shared/datasets/inspect_training_dataset/SUPER-NATURALINSTRUCTIONS-english-filtered_peft")
+    parser.add_argument("--training_stats_path", type=str, default="./shared/trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english-filtered_peft/training_stats.csv")
+    parser.add_argument("--results_save_dir", type=str, default="./shared/inspect_results")
     parser.add_argument("--num_training_examples", type=int, default=50)
     parser.add_argument("--num_tokens", type=int, default=20)
     parser.add_argument("--seed", type=int, default=47)
@@ -98,7 +98,8 @@ def run(args_list=None):
     # Meta List to store the cosine_sim for all training examples for all src layers and all target layers
     cosine_sim_meta_list = [[[0 for _ in range(32)] for _ in range(32)] for _ in range(NUM_TRAINING_EXAMPLES)]
 
-    for example_idx, data in enumerate(tqdm(train_dataset[:NUM_TRAINING_EXAMPLES], desc="Performing InSPEcT on Train Soft Prompts")):
+    for example_idx, data in enumerate(tqdm(train_dataset, desc="Performing InSPEcT on Train Soft Prompts")):
+    # for example_idx, data in enumerate(tqdm(train_dataset[:NUM_TRAINING_EXAMPLES], desc="Performing InSPEcT on Train Soft Prompts")):
         task_name = data["task_name"]
         soft_prompt = data["soft_prompt"] # shape (soft_prompt_len, embed_dim)
         hard_prompt = data["hard_prompt"]
@@ -248,7 +249,7 @@ def run(args_list=None):
         # Report Averages
         avg_rouge_l = summary_df['max_rouge_L'].mean()
         avg_cosine_sim = summary_df['max_cosine_sim'].mean()
-        print(f"\nTest Set Averages:")
+        print("\nTest Set Averages:")
         print(f"Average ROUGE-L: {avg_rouge_l:.4f}")
         print(f"Average Cosine Similarity: {avg_cosine_sim:.4f}")
 

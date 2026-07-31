@@ -45,11 +45,6 @@ def generate_preference_dataset(dataset: list[dict], translator_model: PeftModel
 
             z_G = translator_tokenizer.decode(greedy_ids[0], skip_special_tokens=True).strip()
 
-            # if not z_G:
-            #     degenerate_tasks.append(task["task_name"])
-            #     tqdm.write(f'Greedy decode produced empty translation! Skipping task: {task["task_name"]}')
-            #     continue
-
             # Score the greedy translation
             score_G = get_scores([z_G], task["train_instances"]).item()
 
@@ -170,6 +165,7 @@ def run(args_list=None):
     parser.add_argument("--lora-weights-path", type=str, default="./shared/mapper_lora_weights/DPO_rougeL_0.5/meta-llama/Llama-3.1-8B-Instruct")
 
     # HyperParams
+    parser.add_argument("--split", type=str, default="all", choices=["train", "val", "all"], help="Which split to generate: train, val, or all")
     parser.add_argument("-n", "--num-samples-to-generate", type=int, default=10)
     parser.add_argument("-k", "--scaling-factor", type=int, default=1)
     parser.add_argument("-t", "--temperature", type=float, default=0.5)
@@ -188,6 +184,7 @@ def run(args_list=None):
     global DEVICE, DTYPE, K, TOP_P, N, TEMPERATURE, MAX_NEW_TOKENS, MAX_RETRIES, RETRY_TEMP_INCREMENT, MAX_RETRY_TEMPERATURE
 
     # Parse all the arguments into Variables
+    SPLIT = args.split
     MAPPER_DATASET_PATH = args.mapper_dataset_path
     SCORE_FN = args.score_fn
     SCORE_MODEL_NAME = args.score_model_name
@@ -206,7 +203,7 @@ def run(args_list=None):
     OPENAI_CONCURRENCY = args.openai_concurrency
     USE_VLLM = args.use_vllm
     VLLM_GPU_MEMORY_UTILIZATION = args.vllm_gpu_memory_utilization
-    SAVE_DATASET_PATH = args.save_dataset_path + f"/{LORA_WEIGHTS_PATH.split("/")[-3]}"
+    SAVE_DATASET_PATH = args.save_dataset_path + f"/{LORA_WEIGHTS_PATH.split("/")[-3]}_redo"
 
     print(f"Will be saving Pref Dataset to {SAVE_DATASET_PATH}")
 
@@ -218,16 +215,21 @@ def run(args_list=None):
     # ┌───────────────────────────────────────────────┐
     # │                   DATASET PREP                │
     # └───────────────────────────────────────────────┘
-    print("Loading Train and Validation datasets...")
-    train_dataset = torch.load(os.path.join(MAPPER_DATASET_PATH, 'train_mapper_dataset.pt'), 
-                               map_location="cpu", 
-                               weights_only=True)
+    train_dataset = []
+    val_dataset = []
+    if SPLIT in ["train", "all"]:
+        print("Loading Train dataset...")
+        train_dataset = torch.load(os.path.join(MAPPER_DATASET_PATH, 'train_mapper_dataset.pt'), 
+                                   map_location="cpu", 
+                                   weights_only=True)
+        print(f"Train Dataset size: {len(train_dataset)}")
 
-    val_dataset = torch.load(os.path.join(MAPPER_DATASET_PATH, 'val_mapper_dataset.pt'), 
-                             map_location="cpu", 
-                             weights_only=True)
-    
-    print(f"Train Dataset size: {len(train_dataset)} | Validation Dataset size: {len(val_dataset)}")
+    if SPLIT in ["val", "all"]:
+        print("Loading Validation dataset...")
+        val_dataset = torch.load(os.path.join(MAPPER_DATASET_PATH, 'val_mapper_dataset.pt'), 
+                                 map_location="cpu", 
+                                 weights_only=True)
+        print(f"Validation Dataset size: {len(val_dataset)}")
     
 
     # ┌───────────────────────────────────────────────┐
@@ -265,8 +267,11 @@ def run(args_list=None):
     # ┌───────────────────────────────────────────────┐
     # │          PREFERENCE DATASET GENERATION        │
     # └───────────────────────────────────────────────┘
-    # train_preference_dataset, train_stats = generate_preference_dataset(train_dataset, translator_model, translator_tokenizer)
-    val_preference_dataset, val_stats = generate_preference_dataset(val_dataset, translator_model, translator_tokenizer)
+    if SPLIT in ["train", "all"]:
+        train_preference_dataset, train_stats = generate_preference_dataset(train_dataset, translator_model, translator_tokenizer)
+
+    if SPLIT in ["val", "all"]:
+        val_preference_dataset, val_stats = generate_preference_dataset(val_dataset, translator_model, translator_tokenizer)
 
 
     # ┌───────────────────────────────────────────────┐
@@ -276,22 +281,22 @@ def run(args_list=None):
     os.makedirs(SAVE_DATASET_PATH, exist_ok=True)
     
     # Save the Training and Validation Datasets
-    train_dataset_path = os.path.join(SAVE_DATASET_PATH, 'train_dataset.pt')
-    val_dataset_path = os.path.join(SAVE_DATASET_PATH, 'val_dataset.pt')
-    
-    # torch.save(train_preference_dataset, train_dataset_path)
-    torch.save(val_preference_dataset, val_dataset_path)
-    
-    # print(f"Saved Train Split ({len(train_preference_dataset)} samples) to: {train_dataset_path}")
-    print(f"Saved Val Split ({len(val_preference_dataset)} samples) to: {val_dataset_path}")
+    if SPLIT in ["train", "all"]:
+        train_dataset_path = os.path.join(SAVE_DATASET_PATH, 'train_dataset.pt')
+        torch.save(train_preference_dataset, train_dataset_path)
+        print(f"Saved Train Split ({len(train_preference_dataset)} samples) to: {train_dataset_path}")
 
-    train_stats_path = os.path.join(SAVE_DATASET_PATH, 'train_translations_stats.json')
-    val_stats_path = os.path.join(SAVE_DATASET_PATH, 'val_translations_stats.json')
-    
-    # with open(train_stats_path, 'w') as f:
-    #     json.dump(train_stats, f, indent=4)
+        train_stats_path = os.path.join(SAVE_DATASET_PATH, 'train_translations_stats.json')
+        with open(train_stats_path, 'w') as f:
+            json.dump(train_stats, f, indent=4)
+        print(f"Saved detailed translations stats to: {train_stats_path}")
+
+    if SPLIT in ["val", "all"]:
+        val_dataset_path = os.path.join(SAVE_DATASET_PATH, 'val_dataset.pt')
+        torch.save(val_preference_dataset, val_dataset_path)
+        print(f"Saved Val Split ({len(val_preference_dataset)} samples) to: {val_dataset_path}")
         
-    with open(val_stats_path, 'w') as f:
-        json.dump(val_stats, f, indent=4)
-        
-    print(f"Saved detailed translations stats to: {train_stats_path} and {val_stats_path}")
+        val_stats_path = os.path.join(SAVE_DATASET_PATH, 'val_translations_stats.json')
+        with open(val_stats_path, 'w') as f:
+            json.dump(val_stats, f, indent=4)
+        print(f"Saved detailed translations stats to: {val_stats_path}")

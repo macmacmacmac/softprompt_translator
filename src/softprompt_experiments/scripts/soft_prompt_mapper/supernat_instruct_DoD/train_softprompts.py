@@ -145,7 +145,7 @@ def run(args_list):
     parser.add_argument("--max_length", type=int, default=512)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--dataset_path", type=str, default="SoftPromptTranslator/SUPER-NATURALINSTRUCTIONS-english-filtered")
-    parser.add_argument("--save_dir", type=str, default="./shared/trained_soft_prompts/General-DoD-70b")
+    parser.add_argument("--save_dir", type=str, default="./shared/trained_soft_prompts/General-DoD-10tokens")
     parser.add_argument("--num_examples", type=int, default=500, help = "num of examples to use per task for training and eval of soft prompts")
     parser.add_argument("--seed", type=int, default=47)
     parser.add_argument("--train_only_test", action="store_true", help="Consider training only test soft prompts")
@@ -157,6 +157,7 @@ def run(args_list):
 
     # Parse all the arguments into Variables
     MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
+    # MODEL_NAME = "meta-llama/Llama-3.2-1B"
     # MODEL_NAME = "meta-llama/Llama-3.1-70B-Instruct"
     DATASET_PATH = args.dataset_path
     LR = args.lr
@@ -244,7 +245,7 @@ def run(args_list):
 
     else:
         # Combine splits to get all tasks and their respective instances across the dataset
-        splits_to_concat = [hf_ds[split] for split in hf_ds.keys()]
+        splits_to_concat = [hf_ds[split] for split in hf_ds]
         full_ds = concatenate_datasets(splits_to_concat)
     
     # Convert to pandas for grouping instances by task efficiently without .filter() iteration
