@@ -131,8 +131,8 @@ def run(args_list=None):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--inspect_soft_prompts_dir", type=str, default="./inspect_soft_prompts_custom_sample_vocab")
-    parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights/DoD_2_5k_Mistral_transformed")
+    parser.add_argument("--inspect_soft_prompts_dir", type=str, default="./trained_soft_prompts/inspect_soft_prompts_custom")
+    parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights/DoD_3_5k")
     parser.add_argument("--num_tokens", type=int, default=20)
     parser.add_argument("--seed", type=int, default=47)
     parser.add_argument("--peft", action="store_true", help="Use PEFT style way of loading soft prompts")

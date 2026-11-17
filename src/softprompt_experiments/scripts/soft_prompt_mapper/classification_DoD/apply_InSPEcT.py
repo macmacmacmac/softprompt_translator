@@ -132,8 +132,8 @@ def run(args_list=None):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--inspect_soft_prompts_dir", type=str, default="./inspect_soft_prompts_peft_random_500_examples")
-    parser.add_argument("--results_save_dir", type=str, default="./inspect_results/inspect_soft_prompts_peft_random_500_examples")
+    parser.add_argument("--inspect_soft_prompts_dir", type=str, default="./trained_soft_prompts/inspect_soft_prompts_peft")
+    parser.add_argument("--results_save_dir", type=str, default="./inspect_results/inspect_soft_prompts_peft")
     parser.add_argument("--num_tokens", type=int, default=20)
     parser.add_argument("--peft", action="store_true", help="Use PEFT style way of loading soft prompts")
     args, _ = parser.parse_known_args(args_list)

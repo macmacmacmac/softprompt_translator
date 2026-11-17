@@ -95,8 +95,8 @@ def run(args_list=None):
     print("=" * 100)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", type=str, default="./shared/verbalizations/rougeL_z_W_DPO_0.1.json")
-    parser.add_argument("--output", type=str, default="./shared/verbalizations/rougeL_z_W_DPO_0.1.json")
+    parser.add_argument("--input", type=str, default="./verbalizations/master_verbalizations.json")
+    parser.add_argument("--output", type=str, default="./verbalizations/task_relevance_gpt-4o-mini.json")
     parser.add_argument("--model", type=str, default="gpt-4o-mini")
     parser.add_argument("--methods", nargs="+", default=["mapper", "inspect", "gt", "fs"], help="List of method prefixes to evaluate (e.g. mapper inspect gt fs mapper10x)")
 

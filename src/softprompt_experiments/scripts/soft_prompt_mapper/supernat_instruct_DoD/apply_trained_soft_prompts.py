@@ -18,9 +18,9 @@ def run(args_list=None):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mapper-dataset-path", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD")
-    parser.add_argument("--master-verbalizations-path", type=str, default="./shared/verbalizations/master_verbalizations_v2.json")
-    parser.add_argument("--new-verbalizations-path", type=str, default="./shared/verbalizations/master_verbalizations_v2_new.json")
+    parser.add_argument("--mapper-dataset-path", type=str, default="./datasets/mapper_training_dataset/General-DoD-10x")
+    parser.add_argument("--master-verbalizations-path", type=str, default="./verbalizations/master_verbalizations.json")
+    parser.add_argument("--new-verbalizations-path", type=str, default="./verbalizations/master_verbalizations.json")
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all the arguments into Variables

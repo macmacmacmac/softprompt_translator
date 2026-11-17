@@ -81,7 +81,7 @@ def run(args_list=None):
 
 
     BEST_LAYER_PAIR = [
-        {"min_source": 18, "max_source": 18, "min_target": 28, "max_target": 28}
+        {"min_source": 27, "max_source": 27, "min_target": 0, "max_target": 0}
     ]
 
     # ┌───────────────────────────────────────────────┐

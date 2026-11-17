@@ -93,12 +93,11 @@ def run(args_list=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--proj_lr", type=float, default=1e-3, help="Learning rate for the soft prompt projection layer")
     parser.add_argument("--epochs", type=int, default=5)
-    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_tokens", type=int, default=20)
-    parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD-10x-new")
-    parser.add_argument("--lora_save_dir", type=str, default="./shared/mapper_lora_weights")
+    parser.add_argument("--mapper_dataset_path", type=str, default="./datasets/mapper_training_dataset/General-DoD-10x")
+    parser.add_argument("--lora_save_dir", type=str, default="./mapper_lora_weights")
     parser.add_argument("--lora_rank", type=int, default=4)
     parser.add_argument("--lora_dropout", type=float, default=0.1)
     parser.add_argument("--optim_weight_decay", type=float, default=0.1) 
@@ -113,7 +112,6 @@ def run(args_list=None):
     DATASET_NAME = MAPPER_DATASET_PATH.split('/')[-1]
     LORA_SAVE_DIR = os.path.join(args.lora_save_dir, DATASET_NAME, MODEL_NAME)
     LR = args.lr
-    PROJ_LR = args.proj_lr
     EPOCHS = args.epochs
     BATCH_SIZE = args.batch_size
     NUM_TOKENS = args.num_tokens
@@ -185,30 +183,8 @@ def run(args_list=None):
     
     print(f"Train Dataset size: {len(train_dataset)} | Validation Dataset size: {len(val_dataset)}")
 
-    # Check for embedding dimension mismatch (e.g., 8B soft prompts → 70B model)
-    MODEL_EMBED_DIM = base_model.config.hidden_size
-    SOFT_PROMPT_DIM = train_dataset[0]["soft_prompt"].shape[-1]
-
-    if SOFT_PROMPT_DIM != MODEL_EMBED_DIM:
-        print(f"Soft prompt dim ({SOFT_PROMPT_DIM}) != model dim ({MODEL_EMBED_DIM}). "
-              f"Adding learned projection layer.")
-        soft_prompt_projection = torch.nn.Linear(
-            SOFT_PROMPT_DIM, MODEL_EMBED_DIM, bias=False
-        ).to(dtype=DTYPE, device=base_model.device)
-    else:
-        soft_prompt_projection = None
-
-    # Init Optimizer (includes projection params if needed)
-    if soft_prompt_projection is not None:
-        params_to_optimize = [
-            {"params": model.parameters(), "lr": LR},
-            {"params": soft_prompt_projection.parameters(), "lr": PROJ_LR}
-        ]
-    else:
-        params_to_optimize = [
-            {"params": model.parameters(), "lr": LR}
-        ]
-    optimizer = torch.optim.AdamW(params_to_optimize,
+    # Init Optimizer
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LR,
                                   weight_decay=OPTIM_WEIGHT_DECAY)
 
     # Init Collator
@@ -256,8 +232,6 @@ def run(args_list=None):
             
             # Move inputs to GPU
             soft_prompts = batch["soft_prompts"].to(DEVICE, dtype=DTYPE)                # (batch_size, soft_prompt_len, embed_dim)
-            if soft_prompt_projection is not None:
-                soft_prompts = soft_prompt_projection(soft_prompts)                     # (batch_size, soft_prompt_len, MODEL_EMBED_DIM)
             input_ids = batch["input_ids"].to(DEVICE)                                   # (batch_size, seq_len)
             attention_mask = batch["attention_mask"].to(DEVICE)                         # (batch_size, seq_len)
             labels = batch["labels"].to(DEVICE)                                         # (batch_size, seq_len)
@@ -312,8 +286,6 @@ def run(args_list=None):
 
                 # Move inputs to DEVICE
                 soft_prompts = batch["soft_prompts"].to(DEVICE, dtype=DTYPE)            # (batch_size, soft_prompt_len, embed_dim)
-                if soft_prompt_projection is not None:
-                    soft_prompts = soft_prompt_projection(soft_prompts)                 # (batch_size, soft_prompt_len, MODEL_EMBED_DIM)
                 input_ids = batch["input_ids"].to(DEVICE)                               # (batch_size, seq_len)
                 attention_mask = batch["attention_mask"].to(DEVICE)                     # (batch_size, seq_len)
                 labels = batch["labels"].to(DEVICE)                                     # (batch_size, seq_len)
@@ -381,18 +353,12 @@ def run(args_list=None):
             os.makedirs(LORA_SAVE_DIR, exist_ok=True)
             model.save_pretrained(LORA_SAVE_DIR)
             tokenizer.save_pretrained(LORA_SAVE_DIR)
-            if soft_prompt_projection is not None:
-                torch.save(soft_prompt_projection.state_dict(),
-                           os.path.join(LORA_SAVE_DIR, "soft_prompt_projection.pt"))
             tqdm.write(f"--> Saved new best model weights (Epoch {best_epoch}, Val ROUGE-L: {best_val_rouge_l:.4f}) to {LORA_SAVE_DIR}\n")
 
     if args.save_at_end:
         os.makedirs(LORA_SAVE_DIR, exist_ok=True)
         model.save_pretrained(LORA_SAVE_DIR)
         tokenizer.save_pretrained(LORA_SAVE_DIR)
-        if soft_prompt_projection is not None:
-            torch.save(soft_prompt_projection.state_dict(),
-                        os.path.join(LORA_SAVE_DIR, "soft_prompt_projection.pt"))
         print(f"Mapper training complete! LoRA weights saved to {LORA_SAVE_DIR}")
 
     # ┌───────────────────────────────────────────────┐

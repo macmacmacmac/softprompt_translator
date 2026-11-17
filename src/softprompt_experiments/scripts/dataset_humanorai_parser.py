@@ -22,6 +22,7 @@ def run(args_list):
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--save_directory", type=str, default="./datasets/human_or_ai_dataset")
+    parser.add_argument("--csv_path", type=str, default="./datasets/human_or_ai_dataset/human_or_ai_dataset.csv")
     args, _ = parser.parse_known_args(args_list)
     
     MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
@@ -35,7 +36,7 @@ def run(args_list):
     # pipeline
     save_dir = os.path.join(SAVE_DIR, "dataset_0")
 
-    df = pd.read_csv("./datasets/human_or_ai_dataset/human_or_ai_dataset.csv")
+    df = pd.read_csv(args.csv_path)
     
     # input_sentences = [f"\nSample text: {input_sent}\nAnswer: " for input_sent in df.text.tolist()]
     prefix = "\nSample text:\n\""

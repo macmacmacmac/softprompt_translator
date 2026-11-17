@@ -30,11 +30,12 @@ def run(args_list=None):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
-    parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD-10x")
-    parser.add_argument("--master_verbalizations_path", type=str, default="./shared/verbalizations/rougeL_z_W.json")
+    parser.add_argument("--mapper_dataset_path", type=str, default="./datasets/mapper_training_dataset/General-DoD-10x")
+    parser.add_argument("--master_verbalizations_path", type=str, default="./verbalizations/master_verbalizations.json")
     parser.add_argument("--fieldname_to_save", type=str, default="dpo_10x_round1")
     parser.add_argument("--sample", action='store_true', help="Use a sample of val dataset instead of the full val dataset")
-    parser.add_argument("--lora_dir", type=str, default="./shared/mapper_lora_weights")
+    parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights")
+    parser.add_argument("--output_json", type=str, default=None, help="Defaults to ./verbalizations/master_verbalizations_DPO_<beta>.json")
     parser.add_argument("--beta", type=float, default=0.1)
     parser.add_argument("--num_samples", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=16)
@@ -198,7 +199,7 @@ def run(args_list=None):
 
 
     # Save to JSON
-    output_dir = f"./shared/verbalizations/rougeL_z_W_DPO_{str(args.beta)}.json"
+    output_dir = args.output_json or f"./verbalizations/master_verbalizations_DPO_{str(args.beta)}.json"
     with open(output_dir, "w") as f:
         json.dump(master_verbalizations, f, indent=4)
     print(f"Done!\nSaved to {output_dir}")

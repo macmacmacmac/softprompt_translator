@@ -73,7 +73,7 @@ def run(args_list):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--local_dataset_dir_path", type=str, default="/home/sgoyal/natural-instructions")
+    parser.add_argument("--local_dataset_dir_path", type=str, default="./natural-instructions", help="Local clone of github.com/allenai/natural-instructions")
     parser.add_argument("--english_only", action="store_true", help="Parse English only tasks")
     args, _ = parser.parse_known_args(args_list)
 

@@ -104,9 +104,9 @@ def run(args_list=None):
     parser.add_argument("--lr", type=float, default=1e-6)
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--batch_size", type=int, default=16)
-    parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/dpo_preference_datasets/ROUGE-Lscore_10n_1k_0.5temp_01")
-    parser.add_argument("--mapper_weights_dir", type=str, default="./shared/mapper_lora_weights_overfit/General-DoD-10x/meta-llama/Llama-3.1-8B-Instruct")
-    parser.add_argument("--dpo_save_dir", type=str, default="./shared/mapper_lora_weights")
+    parser.add_argument("--mapper_dataset_path", type=str, default="./datasets/dpo_preference_datasets/General-DoD-10x")
+    parser.add_argument("--mapper_weights_dir", type=str, default="./mapper_lora_weights/General-DoD-10x/meta-llama/Llama-3.1-8B-Instruct")
+    parser.add_argument("--dpo_save_dir", type=str, default="./mapper_lora_weights")
     parser.add_argument("--optim_weight_decay", type=float, default=0.1) 
     parser.add_argument("--beta", type=float, default=0.1) 
     args, _ = parser.parse_known_args(args_list)
@@ -174,8 +174,6 @@ def run(args_list=None):
     print("Loading Train and Validation datasets ...")
     train_dataset = torch.load(os.path.join(MAPPER_DATASET_PATH, 'train_dataset.pt'), map_location="cpu", weights_only=True)
 
-    # train_dataset2 = torch.load(os.path.join("./shared/datasets/dpo_preference_datasets/LOGPROBscore_10n_1k_1.0temp", 'train_dataset.pt'), map_location="cpu", weights_only=True)
-    # train_dataset = train_dataset + train_dataset2
 
     val_dataset = torch.load(os.path.join(MAPPER_DATASET_PATH, 'val_dataset.pt'), map_location="cpu", weights_only=True)
     

@@ -69,7 +69,7 @@ def run(args_list):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_path", type=str, default="SoftPromptTranslator/SUPER-NATURALINSTRUCTIONS-english-filtered-100x-augmented")
-    parser.add_argument("--trained_soft_prompts_dir", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english-filtered_peft")
+    parser.add_argument("--trained_soft_prompts_dir", type=str, default="./trained_soft_prompts/General-DoD_peft")
     parser.add_argument("--compiled_dataset_dir", type=str, default="./datasets/inspect_training_dataset")
     parser.add_argument("--forbidden_task_names_path", type=str, default="./forbidden_task_names_for_inspect.pkl")
     parser.add_argument("--seed", type=int, default=47)

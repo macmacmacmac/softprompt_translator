@@ -283,7 +283,7 @@ def run(args_list):
 
     # Create Parent Directory to save all soft prompts for this Dataset
     DB_NAME = DB_PATH.split("/")[-1].split(".")[0]
-    PARENT_DIR = f"{SAVE_DIR}/{DB_NAME}_peft_sample_vocab"
+    PARENT_DIR = f"{SAVE_DIR}/{DB_NAME}_peft"
     os.makedirs(PARENT_DIR, exist_ok=True)
 
 
