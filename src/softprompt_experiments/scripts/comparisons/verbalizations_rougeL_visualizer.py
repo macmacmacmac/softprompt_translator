@@ -112,7 +112,7 @@ def run(args_list=None):
     print("=" * 100)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", type=str, default="./shared/verbalizations/rougeL_DPO_SFT_test.json")
+    parser.add_argument("--output", type=str, default="./verbalizations/rougeL_DPO_SFT_test.json")
     args, _ = parser.parse_known_args(args_list)
 
     build_visual(output_path=args.output)

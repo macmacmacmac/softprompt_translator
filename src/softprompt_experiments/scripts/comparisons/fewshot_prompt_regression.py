@@ -89,8 +89,8 @@ def run(args_list=None):
     print("=" * 100)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", type=str, default="./shared/verbalizations/master_verbalizations_v3.json")
-    parser.add_argument("--output", type=str, default="./shared/verbalizations/fs_prompt_regression_master_verbalizations_v3.json")
+    parser.add_argument("--input", type=str, default="./verbalizations/master_verbalizations_v3.json")
+    parser.add_argument("--output", type=str, default="./verbalizations/fs_prompt_regression_master_verbalizations_v3.json")
     parser.add_argument("--model", type=str, default="gpt-4o-mini")
     
     args, _ = parser.parse_known_args(args_list)

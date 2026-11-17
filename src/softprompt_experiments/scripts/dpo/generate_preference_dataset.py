@@ -149,8 +149,8 @@ def run(args_list=None):
     parser = argparse.ArgumentParser()
 
     # Dataset Paths
-    parser.add_argument("--mapper-dataset-path", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD-DPO")
-    parser.add_argument("--save-dataset-path", type=str, default="./shared/datasets/dpo_preference_datasets")
+    parser.add_argument("--mapper-dataset-path", type=str, default="./datasets/mapper_training_dataset/General-DoD-DPO")
+    parser.add_argument("--save-dataset-path", type=str, default="./datasets/dpo_preference_datasets")
 
     # Score Model
     parser.add_argument("--score-fn", type=str, default="LOGPROB", help="Can be either: ROUGE-L | LOGPROB")
@@ -162,7 +162,7 @@ def run(args_list=None):
 
     # Translator Model
     parser.add_argument("--lora-model-name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
-    parser.add_argument("--lora-weights-path", type=str, default="./shared/mapper_lora_weights/DPO_rougeL_0.5/meta-llama/Llama-3.1-8B-Instruct")
+    parser.add_argument("--lora-weights-path", type=str, default="./mapper_lora_weights/General-DoD-10x/meta-llama/Llama-3.1-8B-Instruct")
 
     # HyperParams
     parser.add_argument("--split", type=str, default="all", choices=["train", "val", "all"], help="Which split to generate: train, val, or all")
@@ -203,7 +203,7 @@ def run(args_list=None):
     OPENAI_CONCURRENCY = args.openai_concurrency
     USE_VLLM = args.use_vllm
     VLLM_GPU_MEMORY_UTILIZATION = args.vllm_gpu_memory_utilization
-    SAVE_DATASET_PATH = args.save_dataset_path + f"/{LORA_WEIGHTS_PATH.split("/")[-3]}_redo"
+    SAVE_DATASET_PATH = args.save_dataset_path + f"/{LORA_WEIGHTS_PATH.split("/")[-3]}"
 
     print(f"Will be saving Pref Dataset to {SAVE_DATASET_PATH}")
 

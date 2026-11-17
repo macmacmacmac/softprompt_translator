@@ -175,7 +175,7 @@ def run(args_list):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--num_tokens", type=int, default=20)
-    parser.add_argument("--save_dir", type=str, default="./inspect_soft_prompts_custom_sample_vocab")
+    parser.add_argument("--save_dir", type=str, default="./trained_soft_prompts/inspect_soft_prompts_custom")
     parser.add_argument("--seed", type=int, default=47)
     args, _ = parser.parse_known_args(args_list)
     

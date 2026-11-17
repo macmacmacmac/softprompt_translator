@@ -24,7 +24,7 @@ def run(args_list=None):
     parser.add_argument("--val_dataset_path", type=str, default="./datasets/mapper_training_dataset/DoD_3_5k/val_mapper_dataset.pt")
     parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights/DoD_3_5k")
     parser.add_argument("--training_stats_path", type=str, default="./trained_soft_prompts/DoD_3_5k/accuracy_stats.csv")
-    parser.add_argument("--json_results_path", type=str, default="./DoD_3_5k_results.json")
+    parser.add_argument("--json_results_path", type=str, default="./verbalizations/translator_DoD_3_5k.json")
     parser.add_argument("--sample", action='store_true', help="Use a sample of val dataset instead of the full val dataset")
     parser.add_argument("--num_samples", type=int, default=5)
     parser.add_argument("--num_tokens", type=int, default=20)

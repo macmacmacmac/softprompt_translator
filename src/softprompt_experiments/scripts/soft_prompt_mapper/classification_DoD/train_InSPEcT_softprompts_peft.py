@@ -354,7 +354,7 @@ def run(args_list=None):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--save_dir", type=str, default="./shared/trained_soft_prompts/inspect_soft_prompts_peft_1B")
+    parser.add_argument("--save_dir", type=str, default="./trained_soft_prompts/inspect_soft_prompts_peft")
     parser.add_argument("--num_tokens", type=int, default=20)
     args, _ = parser.parse_known_args(args_list)
 

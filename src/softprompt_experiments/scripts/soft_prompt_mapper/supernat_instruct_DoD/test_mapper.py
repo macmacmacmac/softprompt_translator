@@ -30,12 +30,10 @@ def run(args_list=None):
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
-    parser.add_argument("--mapper_dataset_path", type=str, default="./shared/datasets/mapper_training_dataset/General-DoD-10x-new")
-    parser.add_argument("--master_verbalizations_path", type=str, default="./shared/verbalizations/rougeL_z_W.json")
-    parser.add_argument("--fieldname_to_save", type=str, default="dpo_10x_round1")
+    parser.add_argument("--mapper_dataset_path", type=str, default="./datasets/mapper_training_dataset/General-DoD-10x")
     parser.add_argument("--sample", action='store_true', help="Use a sample of val dataset instead of the full val dataset")
-    parser.add_argument("--lora_dir", type=str, default="./shared/mapper_lora_weights/General-DoD-10x-new")
-    parser.add_argument("--beta", type=float, default=0.1)
+    parser.add_argument("--lora_dir", type=str, default="./mapper_lora_weights/General-DoD-10x", help="Parent of the <model_name> adapter dir written by train_mapper")
+    parser.add_argument("--output_json", type=str, default="./verbalizations/translator_General-DoD-10x.json")
     parser.add_argument("--num_samples", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_tokens", type=int, default=20)
@@ -53,7 +51,7 @@ def run(args_list=None):
     SEED = args.seed
     DO_SAMPLE = args.do_sample
     EMBED_MODEL_NAME = args.embed_model_name
-    MASTER_VERBALIZATIONS_PATH = args.master_verbalizations_path
+    OUTPUT_JSON_PATH = args.output_json
 
     # Set the Seed for this experiment
     random.seed(SEED)
@@ -98,20 +96,6 @@ def run(args_list=None):
     model = PeftModel.from_pretrained(base_model, LORA_DIR)
     model.eval()
 
-    # Load soft prompt projection layer if saved alongside LoRA weights
-    projection_path = os.path.join(LORA_DIR, "soft_prompt_projection.pt")
-    if os.path.exists(projection_path):
-        SP_DIM = test_samples[0]["soft_prompt"].shape[-1]
-        MODEL_DIM = base_model.config.hidden_size
-        soft_prompt_projection = torch.nn.Linear(SP_DIM, MODEL_DIM, bias=False)
-        soft_prompt_projection.load_state_dict(
-            torch.load(projection_path, map_location=base_model.device, weights_only=True)
-        )
-        soft_prompt_projection.to(dtype=DTYPE, device=base_model.device).eval()
-        print(f"Loaded soft prompt projection ({SP_DIM} \u2192 {MODEL_DIM})")
-    else:
-        soft_prompt_projection = None
-
     # ┌───────────────────────────────────────────────┐
     # │                 INFERENCE LOOP                │
     # └───────────────────────────────────────────────┘
@@ -133,8 +117,6 @@ def run(args_list=None):
             
             # Stack soft prompts: (batch_size, seq_len, embed_dim)
             soft_prompts = torch.stack([s["soft_prompt"] for s in batch_samples]).to(DEVICE, dtype=DTYPE)
-            if soft_prompt_projection is not None:
-                soft_prompts = soft_prompt_projection(soft_prompts)
             
             # Create an attention mask for the batch: (batch_size, seq_len)
             attention_mask = torch.ones(soft_prompts.shape[:2], dtype=torch.long, device=DEVICE)
@@ -184,20 +166,8 @@ def run(args_list=None):
                     "val_instances": val_instances_list[j]
                 })
 
-    # Merge results into master verbaliztions
-    # Uncomment as per need
-    # with open(MASTER_VERBALIZATIONS_PATH, "r") as f:
-    #     master_verbalizations = json.load(f)
-    #     assert len(master_verbalizations) == len(results_data)
-
-    # for m, r in zip(master_verbalizations, results_data):
-    #     assert m["task_name"] == r["task_name"]
-    #     m[f"{args.fieldname_to_save}_hard_prompt"] = r["mapper_hard_prompt"]
-    #     m[f"{args.fieldname_to_save}_hard_prompt_rougeL"] = r["mapper_hard_prompt_rougeL"]
-    #     m[f"{args.fieldname_to_save}_hard_prompt_cos_sim"] = r["mapper_hard_prompt_cos_sim"]
-
-
     # Save to JSON
-    with open("./shared/verbalizations/mapper10x.json", "w") as f:
+    os.makedirs(os.path.dirname(OUTPUT_JSON_PATH) or ".", exist_ok=True)
+    with open(OUTPUT_JSON_PATH, "w") as f:
         json.dump(results_data, f, indent=4)
-    print("Done!\n")
+    print(f"Done! Saved to {OUTPUT_JSON_PATH}\n")

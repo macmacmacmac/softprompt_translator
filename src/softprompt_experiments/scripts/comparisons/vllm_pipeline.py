@@ -47,8 +47,8 @@ def run(args_list=None):
     print("=" * 100)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", type=str, default="./shared/verbalizations/master_verbalizations_8b.json")
-    parser.add_argument("--output", type=str, default="./shared/verbalizations/master_verbalizations_8b_fsr_and_1x.json")
+    parser.add_argument("--input", type=str, default="./verbalizations/master_verbalizations.json")
+    parser.add_argument("--output", type=str, default="./verbalizations/task_relevance_Llama-3.1-8B-Instruct.json")
     parser.add_argument("--model", type=str, default="meta-llama/Meta-Llama-3.1-8B-Instruct")
     parser.add_argument("--methods", nargs="+", default=["mapper", "inspect", "gt", "fs"], help="List of method prefixes to evaluate (e.g. mapper inspect gt fs mapper10x)")
 

@@ -37,8 +37,8 @@ def run(args_list=None):
 
     # Perform CLI Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument("--soft_prompts_dataset_path", type=str, default="./datasets/inspect_training_dataset/SUPER-NATURALINSTRUCTIONS-english-filtered_peft")
-    parser.add_argument("--training_stats_path", type=str, default="./trained_soft_prompts/SUPER-NATURALINSTRUCTIONS-english-filtered_peft/training_stats.csv")
+    parser.add_argument("--soft_prompts_dataset_path", type=str, default="./datasets/inspect_training_dataset/General-DoD_peft")
+    parser.add_argument("--training_stats_path", type=str, default="./trained_soft_prompts/General-DoD_peft/training_stats.csv")
     parser.add_argument("--results_save_dir", type=str, default="./inspect_results")
     parser.add_argument("--num_training_examples", type=int, default=50)
     parser.add_argument("--num_tokens", type=int, default=20)

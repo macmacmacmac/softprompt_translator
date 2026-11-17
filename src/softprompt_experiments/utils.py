@@ -17,8 +17,6 @@ from transformers import (
 )
 
 from softprompt_experiments.models.softprompt import SoftPrompt
-from softprompt_experiments.models.squishyprompt import SquishyPrompt
-from softprompt_experiments.models.lora import LoRa
 
 
 import json
@@ -703,7 +701,7 @@ def train_softprompt_from_tokenized(
     return final_train_loss, final_test_loss, entropy
 
 def train_lora_from_tokenized(
-    lora: LoRa,
+    lora,
     lr: float,
     epochs: int,
     train_loader: DataLoader,

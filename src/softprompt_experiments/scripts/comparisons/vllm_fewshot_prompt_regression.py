@@ -40,8 +40,8 @@ def run(args_list=None):
     print("=" * 100)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", type=str, default="./shared/verbalizations/master_verbalizations_8b.json")
-    parser.add_argument("--output", type=str, default="./shared/verbalizations/master_verbalizations_8b_fsr_test.json")
+    parser.add_argument("--input", type=str, default="./verbalizations/master_verbalizations_8b.json")
+    parser.add_argument("--output", type=str, default="./verbalizations/master_verbalizations_8b_fsr_test.json")
     parser.add_argument("--model", type=str, default="meta-llama/Meta-Llama-3.1-8B-Instruct")
     
     args, _ = parser.parse_known_args(args_list)

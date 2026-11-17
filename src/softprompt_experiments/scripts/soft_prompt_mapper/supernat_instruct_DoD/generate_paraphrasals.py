@@ -19,6 +19,7 @@ def run(args_list):
     parser.add_argument("--teacher_model", type=str, default="mistralai/Mistral-Small-3.1-24B-Instruct-2503")
     parser.add_argument("--tokenizer_model", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
     parser.add_argument("--num_paraphrasals", type=int, default=10, help="Number of paraphrasals to generate per instruction")
+    parser.add_argument("--log_path", type=str, default="./paraphrased_instructions_log.json", help="Where to write the raw paraphrase generations")
     args, _ = parser.parse_known_args(args_list)
 
     # Parse all arguments into Global Variables
@@ -148,7 +149,7 @@ def run(args_list):
             "paraphrased_token_counts": paraphrased_token_counts
         })
     
-    with open("paraphrased_instructions_log.json", "w", encoding="utf-8") as f:
+    with open(args.log_path, "w", encoding="utf-8") as f:
         json.dump(log_data, f, indent=4)
 
     
